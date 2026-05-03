@@ -1,0 +1,111 @@
+{
+  "dataset": {
+    "n_rows": 5000,
+    "n_features": 8,
+    "n_clusters": 4
+  },
+  "segmentation": {
+    "silhouette_score": 0.3015,
+    "cluster_counts": {
+      "Mass Market": 1606,
+      "Rising Prime": 206,
+      "Established Prime": 1647,
+      "Subprime High-Risk": 1541
+    },
+    "profile": {
+      "income_per_tenure": {
+        "Mass Market": 17043.91,
+        "Rising Prime": 23146.42,
+        "Established Prime": 7528.85,
+        "Subprime High-Risk": 32062.85
+      },
+      "loan_density": {
+        "Mass Market": 0.37,
+        "Rising Prime": 0.24,
+        "Established Prime": 0.17,
+        "Subprime High-Risk": 0.14
+      },
+      "income_verified_flag": {
+        "Mass Market": 0.43,
+        "Rising Prime": 0.9,
+        "Established Prime": 0.91,
+        "Subprime High-Risk": 0.92
+      },
+      "debt_burden_score": {
+        "Mass Market": 39.29,
+        "Rising Prime": 22.5,
+        "Established Prime": 19.9,
+        "Subprime High-Risk": 21.55
+      },
+      "credit_band": {
+        "Mass Market": 0.55,
+        "Rising Prime": 2.05,
+        "Established Prime": 2.42,
+        "Subprime High-Risk": 2.16
+      },
+      "is_homeowner": {
+        "Mass Market": 0.32,
+        "Rising Prime": 0.77,
+        "Established Prime": 0.84,
+        "Subprime High-Risk": 0.86
+      },
+      "tenure_ratio": {
+        "Mass Market": 0.24,
+        "Rising Prime": 0.6,
+        "Established Prime": 0.7,
+        "Subprime High-Risk": 0.11
+      },
+      "long_tenure_flag": {
+        "Mass Market": 0.04,
+        "Rising Prime": 0.41,
+        "Established Prime": 1.0,
+        "Subprime High-Risk": 0.0
+      },
+      "young_high_earner": {
+        "Mass Market": 0.0,
+        "Rising Prime": 1.0,
+        "Established Prime": 0.0,
+        "Subprime High-Risk": 0.0
+      }
+    }
+  },
+  "classification": {
+    "test_accuracy": 0.984,
+    "cv_mean_accuracy": 0.9776,
+    "cv_std_accuracy": 0.0018,
+    "feature_importance": [
+      {
+        "feature": "long_tenure_flag",
+        "importance": 0.31365716931189713
+      },
+      {
+        "feature": "credit_band",
+        "importance": 0.16208608013256412
+      },
+      {
+        "feature": "debt_burden_score",
+        "importance": 0.14367951179759184
+      },
+      {
+        "feature": "young_high_earner",
+        "importance": 0.08952936254701484
+      },
+      {
+        "feature": "tenure_ratio",
+        "importance": 0.08888947763484747
+      },
+      {
+        "feature": "income_per_tenure",
+        "importance": 0.07684609721620661
+      },
+      {
+        "feature": "is_homeowner",
+        "importance": 0.05715246870784103
+      },
+      {
+        "feature": "income_verified_flag",
+        "importance": 0.050773779893800226
+      }
+    ]
+  }
+}
