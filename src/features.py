@@ -1,77 +1,68 @@
-"""Feature engineering for customer segmentation."""
+"""Feature engineering for underwriting customer data."""
 
-import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+import numpy as np
 
 
-def build_rfm_features(df: pd.DataFrame) -> pd.DataFrame:
-    """RFM-style features: Recency (proxy via age), Frequency (loan history), Monetary (income)."""
-    features = pd.DataFrame()
+def build_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Create RFM, behavioral, and stability features from raw customer data.
 
-    # Monetary — income per year of employment (proxy for earning power)
-    features["income_per_tenure"] = df["income"] / (df["employment_years"] + 1)
+    Returns a DataFrame with original columns plus engineered features,
+    ready for clustering.
+    """
+    df = df.copy()
 
-    # Frequency — loan history density
-    features["loan_density"] = df["loan_history_count"] / (df["age"] - 17)
+    # RFM-style recency proxy — employment stability as "recency" of stable income
+    df["employment_recency"] = df["employment_years"].clip(upper=15)
 
-    # Monetary — income stability proxy (verified income boost)
-    features["income_verified_flag"] = df["verified_income"]
+    # Income robustness: income relative to debt obligation
+    df["income_robustness"] = df["income"] / (df["debt_to_income"] * df["income"] + 1)
 
-    return features
+    # Behavioral: loan density — loans per year of employment
+    df["loan_density"] = df["loan_history_count"] / (df["employment_years"] + 0.5)
 
+    # Stability: credit-to-age ratio (normalized credit ambition)
+    df["credit_age_ratio"] = df["credit_score"] / (df["age"] - 17)
 
-def build_behavioral_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Behavioral features: debt burden, credit utilization proxies."""
-    features = pd.DataFrame()
+    # Verified income signal
+    df["verified_income_flag"] = df["verified_income"]
 
-    # Debt burden score
-    features["debt_burden_score"] = df["debt_to_income"] * 100
+    # Home ownership as stability indicator (already 0/1)
+    df["home_stability"] = df["home_ownership"]
 
-    # Credit score normalized band
-    features["credit_band"] = pd.cut(
+    # Income per employment year — growth proxy
+    df["income_per_tenure"] = df["income"] / (df["employment_years"] + 1)
+
+    # Debt burden tier (binned)
+    df["dti_tier"] = pd.cut(
+        df["debt_to_income"],
+        bins=[-np.inf, 0.2, 0.35, 0.5, np.inf],
+        labels=[0, 1, 2, 3],
+    ).astype(int)
+
+    # Credit score tier
+    df["credit_tier"] = pd.cut(
         df["credit_score"],
         bins=[0, 580, 670, 740, 850],
         labels=[0, 1, 2, 3],
-    ).astype(float)
+    ).astype(int)
 
-    # Home ownership as stability proxy
-    features["is_homeowner"] = (df["home_ownership"] >= 1).astype(int)
-
-    return features
+    return df
 
 
-def build_stability_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Employment and residence stability features."""
-    features = pd.DataFrame()
-
-    # Employment tenure ratio
-    features["tenure_ratio"] = df["employment_years"] / (df["age"] - 17)
-
-    # Long tenure flag
-    features["long_tenure_flag"] = (df["employment_years"] >= 5).astype(int)
-
-    # Young high-earner indicator
-    features["young_high_earner"] = ((df["age"] < 30) & (df["income"] > 70000)).astype(int)
-
-    return features
-
-
-def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Combine all feature groups into a single DataFrame."""
-    rfm = build_rfm_features(df)
-    beh = build_behavioral_features(df)
-    stab = build_stability_features(df)
-
-    features = pd.concat([rfm, beh, stab], axis=1)
-
-    # Ensure no NaN from division
-    features = features.fillna(0)
-
-    return features
-
-
-def scale_features(X: pd.DataFrame) -> np.ndarray:
-    """Standardize features for clustering."""
-    scaler = StandardScaler()
-    return scaler.fit_transform(X)
+def get_clustering_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Return the feature matrix used for KMeans clustering."""
+    feature_cols = [
+        "income",
+        "credit_score",
+        "employment_years",
+        "debt_to_income",
+        "loan_history_count",
+        "age",
+        "home_ownership",
+        "verified_income",
+        "income_per_tenure",
+        "dti_tier",
+        "credit_tier",
+    ]
+    return df[feature_cols]
