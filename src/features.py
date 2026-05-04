@@ -1,77 +1,52 @@
-"""Feature engineering for customer segmentation."""
-
-import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+import numpy as np
 
 
-def build_rfm_features(df: pd.DataFrame) -> pd.DataFrame:
-    """RFM-style features: Recency (proxy via age), Frequency (loan history), Monetary (income)."""
-    features = pd.DataFrame()
+def build_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Engineer features for segmentation:
+      - RFM features
+      - Behavioral features
+      - Stability features
+    """
+    df = df.copy()
 
-    # Monetary — income per year of employment (proxy for earning power)
-    features["income_per_tenure"] = df["income"] / (df["employment_years"] + 1)
+    # RFM-style features (Recency not available in static synthetic data,
+    # so we proxy with credit_score and income level bins)
 
-    # Frequency — loan history density
-    features["loan_density"] = df["loan_history_count"] / (df["age"] - 17)
+    # Recency proxy: credit_score normalised (higher = more "recent" credit activity)
+    df["credit_score_norm"] = (df["credit_score"] - 300) / (850 - 300)
 
-    # Monetary — income stability proxy (verified income boost)
-    features["income_verified_flag"] = df["verified_income"]
+    # Frequency proxy: loan_history_count per year of employment
+    df["loan_frequency"] = df["loan_history_count"] / (df["employment_years"] + 0.5)
 
-    return features
+    # Monetary proxy: income-to-age ratio (earnings efficiency)
+    df["income_per_age"] = df["income"] / (df["age"] + 1)
 
+    # Behavioral: debt burden score
+    df["debt_burden_score"] = df["debt_to_income"] * (1 + df["loan_history_count"] * 0.1)
 
-def build_behavioral_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Behavioral features: debt burden, credit utilization proxies."""
-    features = pd.DataFrame()
+    # Behavioral: verified stability
+    df["verified_stability"] = (
+        df["verified_income"] * 0.4 + df["home_ownership"] * 0.6
+    )
 
-    # Debt burden score
-    features["debt_burden_score"] = df["debt_to_income"] * 100
+    # Stability: employment consistency (longer = more stable)
+    df["employment_stability"] = np.tanh(df["employment_years"] / 10)
 
-    # Credit score normalized band
-    features["credit_band"] = pd.cut(
-        df["credit_score"],
-        bins=[0, 580, 670, 740, 850],
-        labels=[0, 1, 2, 3],
-    ).astype(float)
+    # Stability: income reliability (verified income boosts reliability)
+    df["income_reliability"] = df["verified_income"] * 0.5 + (1 - df["debt_to_income"]) * 0.5
 
-    # Home ownership as stability proxy
-    features["is_homeowner"] = (df["home_ownership"] >= 1).astype(int)
+    # Interaction: credit_score * employment_stability
+    df["credit_employment_interaction"] = df["credit_score_norm"] * df["employment_stability"]
 
-    return features
-
-
-def build_stability_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Employment and residence stability features."""
-    features = pd.DataFrame()
-
-    # Employment tenure ratio
-    features["tenure_ratio"] = df["employment_years"] / (df["age"] - 17)
-
-    # Long tenure flag
-    features["long_tenure_flag"] = (df["employment_years"] >= 5).astype(int)
-
-    # Young high-earner indicator
-    features["young_high_earner"] = ((df["age"] < 30) & (df["income"] > 70000)).astype(int)
-
-    return features
+    return df
 
 
-def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Combine all feature groups into a single DataFrame."""
-    rfm = build_rfm_features(df)
-    beh = build_behavioral_features(df)
-    stab = build_stability_features(df)
+if __name__ == "__main__":
+    from data_loader import generate_synthetic_data
 
-    features = pd.concat([rfm, beh, stab], axis=1)
-
-    # Ensure no NaN from division
-    features = features.fillna(0)
-
-    return features
-
-
-def scale_features(X: pd.DataFrame) -> np.ndarray:
-    """Standardize features for clustering."""
-    scaler = StandardScaler()
-    return scaler.fit_transform(X)
+    df = generate_synthetic_data()
+    df_feat = build_features(df)
+    print("Feature columns:", df_feat.columns.tolist())
+    print(df_feat.describe())

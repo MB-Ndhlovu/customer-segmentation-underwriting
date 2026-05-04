@@ -1,14 +1,14 @@
-"""Full pipeline orchestrator for customer segmentation underwriting."""
-
-import os
 import json
-import pandas as pd
-import numpy as np
+import sys
+import pickle
+import pathlib
 
-from src.data_loader import load_data, get_feature_columns
-from src.features import engineer_features, scale_features
-from src.segment import run_segmentation, SEGMENT_NAMES
-from src.classify import train_segment_classifier
+sys.path.insert(0, str(pathlib.Path(__file__).parent / "src"))
+
+from data_loader import generate_synthetic_data
+from features import build_features
+from segment import run_segmentation
+from classify import train_classifier
 
 
 def main():
@@ -16,101 +16,88 @@ def main():
     print("CUSTOMER SEGMENTATION FOR UNDERWRITING — PIPELINE")
     print("=" * 60)
 
-    # --- 1. Load data ---
-    print("\n[1/5] Loading synthetic customer data...")
-    X_raw, y_raw = load_data(n_rows=5000, seed=42)
-    feature_cols = get_feature_columns()
-    print(f"  → {len(X_raw)} rows, {len(feature_cols)} features")
+    # 1. Load / generate data
+    print("\n[1/5] Generating synthetic customer data (n=5000)...")
+    df = generate_synthetic_data(n=5000)
+    print(f"  -> Generated {len(df)} records")
+    print(f"  -> True segment distribution:\n{df['_true_segment'].value_counts().sort_index().to_dict()}")
 
-    # --- 2. Feature engineering ---
-    print("\n[2/5] Engineering features (RFM + behavioral + stability)...")
-    X_engineered = engineer_features(X_raw)
-    print(f"  → {X_engineered.shape[1]} engineered features: {list(X_engineered.columns)}")
+    # 2. Feature engineering
+    print("\n[2/5] Building features (RFM, behavioral, stability)...")
+    df_feat = build_features(df)
+    print(f"  -> Total features: {len(df_feat.columns)}")
 
-    X_scaled = scale_features(X_engineered)
-    print("  → Features standardized")
+    # 3. Segmentation
+    print("\n[3/5] Running KMeans segmentation (k=4)...")
+    df_seg, seg_results = run_segmentation(df_feat)
+    print(f"  -> Silhouette score: {seg_results['silhouette_score']:.4f}")
+    print(f"  -> Segment counts: {seg_results['segment_counts']}")
+    for name, prof in seg_results["profiles"].items():
+        print(f"    . {name}: n={prof['n_customers']}  "
+              f"avg_income=${prof['income']['mean']:,.0f}  "
+              f"avg_credit={prof['credit_score']['mean']:.0f}  "
+              f"avg_DTI={prof['debt_to_income']['mean']:.3f}")
 
-    # --- 3. Segmentation ---
-    print("\n[3/5] Running KMeans segmentation (K=4)...")
-    km, labels, seg_results = run_segmentation(
-        X_scaled=X_scaled,
-        X_orig=X_engineered,
-        feature_cols=list(X_engineered.columns),
-        n_clusters=4,
-        output_dir="reports",
-    )
-    print(f"  → Silhouette score: {seg_results['silhouette_avg']:.4f}")
-    print(f"  → Cluster sizes: {seg_results['cluster_counts']}")
+    # 4. Classification
+    print("\n[4/5] Training RandomForest segment classifier...")
+    clf, clf_results = train_classifier(df_seg)
+    print(f"  -> Test accuracy: {clf_results['accuracy']:.4f}")
+    print(f"  -> CV accuracy:  {clf_results['cv_accuracy_mean']:.4f} +/- {clf_results['cv_accuracy_std']:.4f}")
+    print(f"  -> Top features:  {list(clf_results['feature_importance'].keys())[:3]}")
 
-    # --- 4. Classification ---
-    print("\n[4/5] Training RandomForest classifier on cluster labels...")
-    clf_result = train_segment_classifier(X_engineered, pd.Series(labels))
-    clf_metrics = clf_result["metrics"]
-    print(f"  → Test accuracy: {clf_metrics['test_accuracy']:.4f}")
-    print(f"  → CV mean accuracy: {clf_metrics['cv_mean_accuracy']:.4f} ± {clf_metrics['cv_std_accuracy']:.4f}")
-
-    # Feature importance
-    print("\n  Top 5 predictive features:")
-    for fi in clf_metrics["feature_importance"][:5]:
-        print(f"    - {fi['feature']}: {fi['importance']:.4f}")
-
-    # --- 5. Save results ---
+    # 5. Save artifacts
     print("\n[5/5] Saving artifacts...")
-    os.makedirs("reports", exist_ok=True)
+    out_dir = pathlib.Path("reports")
+    out_dir.mkdir(exist_ok=True)
 
-    # Conversion helper
-    def make_serializable(obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return obj
-
-    seg_profile = seg_results["profile"]
-    seg_counts = {
-        SEGMENT_NAMES[k]: int(v) for k, v in seg_results["cluster_counts"].items()
-    }
-
-    results_summary = {
-        "dataset": {
-            "n_rows": 5000,
-            "n_features": len(feature_cols),
-            "n_clusters": 4,
-        },
+    # Full results JSON
+    output = {
+        "pipeline": "customer-segmentation-underwriting",
+        "n_customers": int(len(df_seg)),
         "segmentation": {
-            "silhouette_score": round(float(seg_results["silhouette_avg"]), 4),
-            "cluster_counts": seg_counts,
-            "profile": {k: {kk: make_serializable(vv) for kk, vv in v.items()} for k, v in seg_profile.items()},
+            "n_clusters": seg_results["n_clusters"],
+            "silhouette_score": seg_results["silhouette_score"],
+            "segment_counts": seg_results["segment_counts"],
+            "profiles": seg_results["profiles"],
         },
         "classification": {
-            "test_accuracy": make_serializable(clf_metrics['test_accuracy']),
-            "cv_mean_accuracy": make_serializable(clf_metrics['cv_mean_accuracy']),
-            "cv_std_accuracy": make_serializable(clf_metrics['cv_std_accuracy']),
-            "feature_importance": clf_metrics["feature_importance"][:8],
+            "accuracy": clf_results["accuracy"],
+            "cv_accuracy_mean": clf_results["cv_accuracy_mean"],
+            "cv_accuracy_std": clf_results["cv_accuracy_std"],
+            "feature_importance": clf_results["feature_importance"],
+            "classification_report": clf_results["classification_report"],
+            "model_params": clf_results["model_params"],
         },
     }
+    results_path = out_dir / "segmentation_results.json"
+    with open(results_path, "w") as f:
+        json.dump(output, f, indent=2)
+    print(f"  -> {results_path}")
 
-    with open("reports/segmentation_results.json", "w") as f:
-        json.dump(results_summary, f, indent=2)
+    # Model pickle
+    model_path = out_dir / "segment_classifier.pkl"
+    with open(model_path, "wb") as f:
+        pickle.dump(clf, f)
+    print(f"  -> {model_path}")
 
-    print("  → reports/segmentation_results.json")
-    print("  → reports/elbow_silhouette.png")
-
-    # --- Summary output ---
     print("\n" + "=" * 60)
     print("PIPELINE COMPLETE")
     print("=" * 60)
-    print(f"\nSilhouette Score:    {seg_results['silhouette_avg']:.4f}")
-    print(f"Classifier Accuracy: {clf_metrics['test_accuracy']:.4f}")
-    print(f"\nSegment Distribution:")
-    for name, count in seg_counts.items():
-        print(f"  {name:<25} {count:>5} ({count/50:.1f}%)")
-    print(f"\nRepo: https://github.com/MB-Ndhlovu/customer-segmentation-underwriting")
 
-    return results_summary
+    # Summary string for Telegram
+    summary = (
+        f"Pipeline Summary\n"
+        f"Customers: {output['n_customers']}\n"
+        f"Segments: Mass Market / Rising Prime / Established Prime / Subprime High-Risk\n"
+        f"Silhouette Score: {output['segmentation']['silhouette_score']:.4f}\n"
+        f"Segment Counts: {output['segmentation']['segment_counts']}\n"
+        f"Classifier Accuracy: {output['classification']['accuracy']:.4f}\n"
+        f"CV Accuracy: {output['classification']['cv_accuracy_mean']:.4f} +/- {output['classification']['cv_accuracy_std']:.4f}\n"
+        f"Top Features: {', '.join(list(output['classification']['feature_importance'].keys())[:3])}"
+    )
+    print(summary)
+    return output
 
 
 if __name__ == "__main__":
-    results = main()
+    output = main()

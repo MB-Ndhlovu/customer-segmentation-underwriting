@@ -1,89 +1,99 @@
-"""Train supervised classifier on cluster labels (RandomForest)."""
-
+import json
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-from sklearn.preprocessing import StandardScaler
-import json
-import os
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.metrics import classification_report, accuracy_score
 
 
-def train_segment_classifier(
-    X: pd.DataFrame,
-    y: pd.Series,
-    test_size: float = 0.25,
-    random_state: int = 42,
-) -> dict:
-    """Train RandomForest on cluster labels; return metrics and model info."""
+FEATURE_COLS = [
+    "income",
+    "credit_score",
+    "employment_years",
+    "debt_to_income",
+    "loan_history_count",
+    "age",
+    "home_ownership",
+    "verified_income",
+]
+
+SEGMENT_NAMES = {
+    0: "Mass Market",
+    1: "Rising Prime",
+    2: "Established Prime",
+    3: "Subprime High-Risk",
+}
+
+
+def train_classifier(df: pd.DataFrame) -> dict:
+    """
+    Train a RandomForestClassifier on cluster labels so we can predict
+    segment from raw application features (without re-running clustering).
+    """
+    X = df[FEATURE_COLS].values
+    y = df["segment_label"].values
+
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=random_state, stratify=y
+        X, y, test_size=0.2, random_state=42, stratify=y
     )
-
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
 
     clf = RandomForestClassifier(
         n_estimators=200,
-        max_depth=10,
+        max_depth=12,
         min_samples_split=5,
-        random_state=random_state,
+        min_samples_leaf=2,
+        random_state=42,
         n_jobs=-1,
     )
+    clf.fit(X_train, y_train)
 
-    clf.fit(X_train_scaled, y_train)
+    y_pred = clf.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
+    cv_scores = cross_val_score(clf, X, y, cv=5, scoring="accuracy")
 
-    y_pred = clf.predict(X_test_scaled)
+    # Feature importance
+    importance = {
+        col: float(imp)
+        for col, imp in zip(FEATURE_COLS, clf.feature_importances_)
+    }
+    importance_sorted = dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
 
-    cv_scores = cross_val_score(clf, X_train_scaled, y_train, cv=5)
-
-    accuracy = accuracy_score(y_test, y_pred)
-    cm = confusion_matrix(y_test, y_pred).tolist()
-    report = classification_report(y_test, y_pred, output_dict=True)
-
-    feature_importance = pd.DataFrame({
-        "feature": X.columns,
-        "importance": clf.feature_importances_,
-    }).sort_values("importance", ascending=False).to_dict(orient="records")
+    report = classification_report(
+        y_test, y_pred, target_names=list(SEGMENT_NAMES.values()), output_dict=True
+    )
 
     results = {
-        "test_accuracy": round(accuracy, 4),
-        "cv_mean_accuracy": round(cv_scores.mean(), 4),
-        "cv_std_accuracy": round(cv_scores.std(), 4),
-        "confusion_matrix": cm,
+        "accuracy": float(acc),
+        "cv_accuracy_mean": float(cv_scores.mean()),
+        "cv_accuracy_std": float(cv_scores.std()),
+        "feature_importance": importance_sorted,
         "classification_report": report,
-        "feature_importance": feature_importance,
         "n_train": len(X_train),
         "n_test": len(X_test),
+        "model_params": {
+            "n_estimators": 200,
+            "max_depth": 12,
+            "min_samples_split": 5,
+            "min_samples_leaf": 2,
+        },
     }
 
-    return {
-        "model": clf,
-        "scaler": scaler,
-        "metrics": results,
-    }
+    return clf, results
 
 
-def predict_segment(model, scaler, X: pd.DataFrame) -> np.ndarray:
-    """Predict segment label for new application data."""
-    X_scaled = scaler.transform(X)
-    return model.predict(X_scaled)
+if __name__ == "__main__":
+    from data_loader import generate_synthetic_data
+    from features import build_features
+    from segment import run_segmentation
 
-
-def save_results(metrics: dict, output_path: str) -> None:
-    """Save metrics dict to JSON."""
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    serializable = {
-        k: v for k, v in metrics.items()
-        if k not in ("model", "scaler")
-    }
-    with open(output_path, "w") as f:
-        json.dump(serializable, f, indent=2, default=str)
-
-
-def run_classification(X: pd.DataFrame, y: pd.Series) -> dict:
-    """Full classification pipeline."""
-    result = train_segment_classifier(X, y)
-    return result
+    df = generate_synthetic_data()
+    df_feat = build_features(df)
+    df_seg, _ = run_segmentation(df_feat)
+    clf, results = train_classifier(df_seg)
+    print(f"Accuracy: {results['accuracy']:.4f}")
+    print(f"CV Accuracy: {results['cv_accuracy_mean']:.4f} ± {results['cv_accuracy_std']:.4f}")
+    print("\nFeature Importance:")
+    for k, v in results["feature_importance"].items():
+        print(f"  {k}: {v:.4f}")
+    print("\nClassification Report:")
+    print(json.dumps(results["classification_report"], indent=2))
