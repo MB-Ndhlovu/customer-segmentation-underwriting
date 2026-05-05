@@ -1,72 +1,48 @@
+"""Feature engineering for customer segmentation."""
+
 import numpy as np
 import pandas as pd
+from sklearn.preprocessing import StandardScaler
 
-def compute_rfm_features(df):
-    df = df.copy()
-    
-    # Recency proxy: inverse of DTI (lower DTI = more recent/responsible)
-    df['payment_behavior_score'] = 1 / (df['debt_to_income'] + 0.1)
-    
-    # Frequency: loan history density
-    df['loan_frequency'] = df['loan_history_count'] / (df['age'] - 17).clip(lower=1)
-    
-    # Monetary: income per year of employment
-    df['income_per_tenure'] = df['income'] / (df['employment_years'].clip(lower=0.5))
-    
-    return df
 
-def compute_behavioral_features(df):
-    df = df.copy()
+def build_features(df):
+    """Build RFM, behavioral, and stability features from raw customer data."""
     
-    # Credit utilization proxy
-    df['credit_score_norm'] = (df['credit_score'] - 300) / (850 - 300)
+    # RFM-style features (Recency, Frequency, Monetary adapted for lending)
+    df['income_per_employment_year'] = df['income'] / (df['employment_years'] + 1)
     
-    # Income stability ratio
-    df['income_stability_ratio'] = df['verified_income'] * df['employment_years'] / (df['age'].clip(lower=18) - 17)
+    # Behavioral features
+    df['loan_frequency'] = df['loan_history_count'] / (df['age'] - 18 + 1)
+    df['credit_utilization_proxy'] = df['debt_to_income']
     
-    # Debt burden score
-    df['debt_burden'] = df['debt_to_income'] * df['loan_history_count']
+    # Stability features
+    df['employment_stability'] = df['employment_years'] / (df['age'] - 18 + 1)
+    df['income_stability'] = df['verified_income']  # Proxy: verified income = more stable
     
-    # Home ownership premium (owning = 1, mortgage = 2, renting = 3)
-    df['home_ownership_premium'] = (4 - df['home_ownership']) / 3
+    # Risk indicators
+    df['high_loan_count'] = (df['loan_history_count'] > 5).astype(int)
+    df['high_dti'] = (df['debt_to_income'] > 0.40).astype(int)
+    df['low_credit'] = (df['credit_score'] < 600).astype(int)
     
-    return df
+    feature_cols = [
+        'income', 'credit_score', 'employment_years', 'debt_to_income',
+        'loan_history_count', 'age', 'home_ownership', 'verified_income',
+        'income_per_employment_year', 'loan_frequency', 'employment_stability',
+        'verified_income', 'high_loan_count', 'high_dti', 'low_credit'
+    ]
+    
+    return df[feature_cols]
 
-def compute_stability_features(df):
-    df = df.copy()
-    
-    # Employment stability
-    df['employment_stability'] = df['employment_years'] * df['verified_income'] / np.sqrt(df['age'])
-    
-    # Credit history depth
-    df['credit_history_depth'] = (df['age'] - 18) * df['credit_score_norm']
-    
-    # Loan experience
-    df['loan_experience'] = np.where(
-        df['loan_history_count'] > 0,
-        np.log1p(df['loan_history_count']),
-        0
-    )
-    
-    return df
 
-def engineer_features(df):
-    df = compute_rfm_features(df)
-    df = compute_behavioral_features(df)
-    df = compute_stability_features(df)
-    return df
+def scale_features(X):
+    """Standardize features for clustering."""
+    scaler = StandardScaler()
+    return scaler.fit_transform(X), scaler
 
-FEATURE_COLS = [
-    'income', 'credit_score', 'employment_years', 'debt_to_income',
-    'loan_history_count', 'age', 'home_ownership', 'verified_income',
-    'payment_behavior_score', 'loan_frequency', 'income_per_tenure',
-    'credit_score_norm', 'income_stability_ratio', 'debt_burden',
-    'home_ownership_premium', 'employment_stability', 'credit_history_depth',
-    'loan_experience'
-]
 
 if __name__ == '__main__':
     from data_loader import generate_customer_data
-    df = generate_customer_data(1000)
-    df = engineer_features(df)
-    print(df[FEATURE_COLS].describe())
+    df = generate_customer_data()
+    X = build_features(df)
+    print(f"Feature matrix shape: {X.shape}")
+    print(X.describe())
