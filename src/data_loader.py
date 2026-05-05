@@ -1,84 +1,108 @@
-"""Generate synthetic customer dataset for underwriting segmentation."""
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder
-
-np.random.seed(42)
-
-SEGMENTS = {
-    0: "Mass Market",
-    1: "Rising Prime",
-    2: "Established Prime",
-    3: "Subprime High-Risk",
-}
+from sklearn.preprocessing import StandardScaler
 
 
-def generate_segment_params(segment_label: int) -> dict:
-    """Return base distribution parameters for each segment."""
-    params = {
-        0: dict(income_mean=55000, income_std=18000, credit_mean=645, credit_std=55,
-                employment_mean=5, employment_std=3, dti_mean=0.28, dti_std=0.10,
-                loans_mean=2, loans_std=1.5, age_mean=34, age_std=8,
-                home_own_prob=0.35, verified_prob=0.55),
-        1: dict(income_mean=72000, income_std=22000, credit_mean=715, credit_std=48,
-                employment_mean=7, employment_std=3.5, dti_mean=0.22, dti_std=0.09,
-                loans_mean=1.5, loans_std=1.2, age_mean=38, age_std=7,
-                home_own_prob=0.50, verified_prob=0.72),
-        2: dict(income_mean=115000, income_std=35000, credit_mean=778, credit_std=42,
-                employment_mean=12, employment_std=5, dti_mean=0.18, dti_std=0.08,
-                loans_mean=2.5, loans_std=2, age_mean=45, age_std=9,
-                home_own_prob=0.72, verified_prob=0.88),
-        3: dict(income_mean=28000, income_std=12000, credit_mean=572, credit_std=62,
-                employment_mean=3, employment_std=2.5, dti_mean=0.40, dti_std=0.14,
-                loans_mean=4, loans_std=2, age_mean=29, age_std=7,
-                home_own_prob=0.18, verified_prob=0.30),
-    }
-    return params[segment_label]
+def generate_synthetic_data(n_samples: int = 5000, seed: int = 42) -> pd.DataFrame:
+    np.random.seed(seed)
 
+    # Four segments with distinct distributions
+    # 0: Mass Market (standard applicants)
+    # 1: Rising Prime (young, good income trajectory)
+    # 2: Established Prime (stable, high credit)
+    # 3: Subprime High-Risk (high DTI, poor credit)
 
-def generate_customers(n: int = 5000) -> pd.DataFrame:
-    """Generate n synthetic customer records distributed across 4 segments."""
-    records = []
-    counts = {0: int(n * 0.30), 1: int(n * 0.25), 2: int(n * 0.20), 3: int(n * 0.25)}
-    counts[0] += n - sum(counts.values())
+    sizes = [n_samples // 4] * 4
+    sizes[0] += n_samples - sum(sizes)  # balance rounding
 
-    for seg_label, seg_size in counts.items():
-        p = generate_segment_params(seg_label)
-        for _ in range(seg_size):
-            income = max(15000, np.random.normal(p["income_mean"], p["income_std"]))
-            credit_score = int(np.clip(np.random.normal(p["credit_mean"], p["credit_std"]), 300, 850))
-            employment_years = max(0, np.random.normal(p["employment_mean"], p["employment_std"]))
-            debt_to_income = max(0.01, np.random.normal(p["dti_mean"], p["dti_std"]))
-            loan_history_count = max(0, int(np.random.poisson(max(0.5, p["loans_mean"]))))
-            age = int(np.clip(np.random.normal(p["age_mean"], p["age_std"]), 18, 80))
-            home_ownership = "own" if np.random.random() < p["home_own_prob"] else "rent"
-            verified_income = "verified" if np.random.random() < p["verified_prob"] else "unverified"
+    data = []
 
-            records.append({
-                "segment_label": seg_label,
-                "income": round(income, 2),
-                "credit_score": credit_score,
-                "employment_years": round(employment_years, 2),
-                "debt_to_income": round(debt_to_income, 4),
-                "loan_history_count": loan_history_count,
-                "age": age,
-                "home_ownership": home_ownership,
-                "verified_income": verified_income,
-            })
+    # Mass Market — moderate across the board
+    for _ in range(sizes[0]):
+        income = int(np.random.normal(55000, 15000))
+        credit_score = int(np.random.normal(670, 60))
+        employment_years = np.random.exponential(4)
+        debt_to_income = np.random.beta(2, 5) * 0.45
+        loan_history_count = np.random.poisson(2)
+        age = int(np.random.normal(35, 8))
+        home_ownership = np.random.choice([0, 1], p=[0.55, 0.45])
+        verified_income = np.random.choice([0, 1], p=[0.3, 0.7])
+        data.append([income, credit_score, employment_years, debt_to_income,
+                     loan_history_count, age, home_ownership, verified_income])
 
-    df = pd.DataFrame(records).sample(frac=1, random_state=42).reset_index(drop=True)
+    # Rising Prime — young, good income, low DTI
+    for _ in range(sizes[1]):
+        income = int(np.random.normal(72000, 18000))
+        credit_score = int(np.random.normal(720, 50))
+        employment_years = np.random.exponential(3)
+        debt_to_income = np.random.beta(1.5, 6) * 0.35
+        loan_history_count = np.random.poisson(1)
+        age = int(np.random.normal(27, 4))
+        home_ownership = np.random.choice([0, 1], p=[0.7, 0.3])
+        verified_income = np.random.choice([0, 1], p=[0.15, 0.85])
+        data.append([income, credit_score, employment_years, debt_to_income,
+                     loan_history_count, age, home_ownership, verified_income])
 
-    le_home = LabelEncoder().fit(["rent", "own"])
-    le_verified = LabelEncoder().fit(["unverified", "verified"])
-    df["home_ownership_enc"] = le_home.transform(df["home_ownership"])
-    df["verified_income_enc"] = le_verified.transform(df["verified_income"])
+    # Established Prime — older, high credit, stable
+    for _ in range(sizes[2]):
+        income = int(np.random.normal(95000, 22000))
+        credit_score = int(np.random.normal(770, 45))
+        employment_years = np.random.exponential(10)
+        debt_to_income = np.random.beta(1, 7) * 0.30
+        loan_history_count = np.random.poisson(3)
+        age = int(np.random.normal(45, 7))
+        home_ownership = np.random.choice([0, 1], p=[0.2, 0.8])
+        verified_income = np.random.choice([0, 1], p=[0.05, 0.95])
+        data.append([income, credit_score, employment_years, debt_to_income,
+                     loan_history_count, age, home_ownership, verified_income])
+
+    # Subprime High-Risk — lower credit, high DTI, unstable
+    for _ in range(sizes[3]):
+        income = int(np.random.normal(38000, 12000))
+        credit_score = int(np.random.normal(580, 55))
+        employment_years = np.random.exponential(2)
+        debt_to_income = np.random.beta(3, 3) * 0.55
+        loan_history_count = np.random.poisson(5)
+        age = int(np.random.normal(32, 8))
+        home_ownership = np.random.choice([0, 1], p=[0.8, 0.2])
+        verified_income = np.random.choice([0, 1], p=[0.6, 0.4])
+        data.append([income, credit_score, employment_years, debt_to_income,
+                     loan_history_count, age, home_ownership, verified_income])
+
+    cols = ["income", "credit_score", "employment_years", "debt_to_income",
+            "loan_history_count", "age", "home_ownership", "verified_income"]
+    df = pd.DataFrame(data, columns=cols)
+
+    # Clamp to realistic bounds
+    df["income"] = df["income"].clip(lower=15000, upper=250000)
+    df["credit_score"] = df["credit_score"].clip(lower=500, upper=850)
+    df["employment_years"] = df["employment_years"].clip(lower=0, upper=45)
+    df["debt_to_income"] = df["debt_to_income"].clip(lower=0.01, upper=0.65)
+    df["loan_history_count"] = df["loan_history_count"].clip(lower=0, upper=20).astype(int)
+    df["age"] = df["age"].clip(lower=18, upper=75).astype(int)
+    df["home_ownership"] = df["home_ownership"].astype(int)
+    df["verified_income"] = df["verified_income"].astype(int)
+
+    # True labels for validation (not used in training)
+    df["true_segment"] = [0] * sizes[0] + [1] * sizes[1] + [2] * sizes[2] + [3] * sizes[3]
 
     return df
 
 
+def get_feature_matrix(df: pd.DataFrame) -> np.ndarray:
+    feature_cols = ["income", "credit_score", "employment_years", "debt_to_income",
+                   "loan_history_count", "age", "home_ownership", "verified_income"]
+    return df[feature_cols].values
+
+
+def scale_features(X: np.ndarray) -> tuple[np.ndarray, StandardScaler]:
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    return X_scaled, scaler
+
+
 if __name__ == "__main__":
-    df = generate_customers(5000)
-    print(df.head())
-    print(f"\nSegment distribution:\n{df['segment_label'].value_counts().sort_index()}")
-    df.to_csv("/home/workspace/Projects/customer-segmentation-underwriting/customers.csv", index=False)
-    print("\nSaved to customers.csv")
+    df = generate_synthetic_data()
+    print(df.describe())
+    print("\nSegment distribution:")
+    print(df["true_segment"].value_counts().sort_index())
