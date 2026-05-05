@@ -1,49 +1,35 @@
-"""Train RandomForest classifier to predict segment from application features."""
-
-import pandas as pd
+"""Train supervised classifier on cluster labels for production inference."""
+import json
 import numpy as np
+import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
-import json
+from sklearn.metrics import classification_report, accuracy_score
+
+SEGMENT_NAMES = {0: "Mass Market", 1: "Rising Prime", 2: "Established Prime", 3: "Subprime High-Risk"}
 
 
-SEGMENT_NAMES = {
-    0: "Mass Market",
-    1: "Rising Prime",
-    2: "Established Prime",
-    3: "Subprime High-Risk",
-}
+FEATURE_COLS = [
+    "income", "credit_score", "employment_years", "debt_to_income",
+    "loan_history_count", "age", "home_ownership_enc", "verified_income_enc",
+]
 
 
-def get_feature_cols() -> list:
-    return [
-        "income",
-        "credit_score",
-        "employment_years",
-        "debt_to_income",
-        "loan_history_count",
-        "age",
-        "home_ownership",
-        "verified_income",
-    ]
-
-
-def train_classifier(df: pd.DataFrame, labels: np.ndarray, seed: int = 42):
+def train_classifier(df: pd.DataFrame, labels: np.ndarray, test_size: float = 0.2) -> dict:
     """Train RandomForest on cluster labels and return model + metrics."""
-    feature_cols = get_feature_cols()
-    X = df[feature_cols].values
+    X = df[FEATURE_COLS].values
     y = labels
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=seed, stratify=y
+        X, y, test_size=test_size, random_state=42, stratify=y
     )
 
     clf = RandomForestClassifier(
         n_estimators=200,
-        max_depth=10,
+        max_depth=12,
         min_samples_split=5,
-        random_state=seed,
+        min_samples_leaf=2,
+        random_state=42,
         n_jobs=-1,
     )
     clf.fit(X_train, y_train)
@@ -51,51 +37,68 @@ def train_classifier(df: pd.DataFrame, labels: np.ndarray, seed: int = 42):
     y_pred = clf.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
 
-    # Feature importances
-    importances = dict(zip(feature_cols, clf.feature_importances_.round(4).tolist()))
+    report = classification_report(y_test, y_pred, target_names=list(SEGMENT_NAMES.values()), output_dict=True)
 
-    # Per-class metrics
-    report = classification_report(
-        y_test, y_pred, target_names=list(SEGMENT_NAMES.values()), output_dict=True
-    )
+    importances = {
+        FEATURE_COLS[i]: round(float(clf.feature_importances_[i]), 4)
+        for i in range(len(FEATURE_COLS))
+    }
+
+    results = {
+        "accuracy": round(acc, 4),
+        "classification_report": report,
+        "feature_importances": importances,
+    }
 
     return {
-        "model": clf,
-        "accuracy": round(acc, 4),
-        "feature_importances": importances,
-        "classification_report": {
-            k: v for k, v in report.items() if k in SEGMENT_NAMES.values()
-        },
-        "test_size": len(y_test),
-        "train_size": len(y_train),
+        "results": results,
+        "clf": clf,
+        "X_test": X_test,
+        "y_test": y_test,
+        "y_pred": y_pred,
     }
 
 
-def predict_segment(model: RandomForestClassifier, application: dict) -> dict:
-    """Predict segment for a single loan application."""
-    feature_cols = get_feature_cols()
-    X = np.array([[application[col] for col in feature_cols]])
-    pred = int(model.predict(X)[0])
-    proba = model.predict_proba(X)[0].round(4).tolist()
-
+def classify_new_application(clf, scaler, app_features: dict) -> dict:
+    """Classify a new loan application. Returns segment prediction and probabilities."""
+    import numpy as np
+    X = np.array([[
+        app_features["income"],
+        app_features["credit_score"],
+        app_features["employment_years"],
+        app_features["debt_to_income"],
+        app_features["loan_history_count"],
+        app_features["age"],
+        1 if app_features["home_ownership"] == "own" else 0,
+        1 if app_features["verified_income"] == "verified" else 0,
+    ]])
+    X_scaled = scaler.transform(X)
+    pred = clf.predict(X_scaled)[0]
+    proba = clf.predict_proba(X_scaled)[0]
     return {
-        "predicted_segment_id": pred,
-        "predicted_segment_name": SEGMENT_NAMES[pred],
-        "probabilities": {
-            SEGMENT_NAMES[i]: round(p, 4) for i, p in enumerate(proba)
-        },
+        "predicted_segment": SEGMENT_NAMES[pred],
+        "segment_id": int(pred),
+        "probabilities": {SEGMENT_NAMES[i]: round(float(p), 4) for i, p in enumerate(proba)},
     }
 
 
 if __name__ == "__main__":
-    from src.data_loader import generate_customer_data
-    from src.features import build_features
-    from src.segment import run_segmentation
+    from data_loader import generate_customers
+    from features import build_features
+    from segment import run_segmentation
 
-    df = generate_customer_data()
-    seg_result = run_segmentation(df, n_clusters=4)
-    labels = seg_result["labels"]
+    df = generate_customers(5000)
+    df = build_features(df)
+    seg_out = run_segmentation(df)
+    clf_out = train_classifier(df, seg_out["labels"])
 
-    result = train_classifier(df, labels)
-    print(f"Classifier Accuracy: {result['accuracy']}")
-    print("Feature Importances:", result["feature_importances"])
+    print("Accuracy:", clf_out["results"]["accuracy"])
+    print("\nFeature Importances:")
+    for feat, imp in sorted(clf_out["results"]["feature_importances"].items(), key=lambda x: -x[1]):
+        print(f"  {feat}: {imp}")
+
+    print("\nClassification Report:")
+    print(classification_report(
+        clf_out["y_test"], clf_out["y_pred"],
+        target_names=list(SEGMENT_NAMES.values())
+    ))
