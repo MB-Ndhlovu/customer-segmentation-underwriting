@@ -1,67 +1,23 @@
 {
-  "segmentation": {
-    "optimal_k": 2,
-    "silhouette_score": 0.222153973835964,
-    "cluster_inertia": 20900.712569086958,
-    "segment_counts": {
-      "Mass Market": 1046,
-      "Rising Prime": 1582,
-      "Established Prime": 1094,
-      "Subprime High-Risk": 1278
-    },
-    "segment_profiles": {
-      "Mass Market": {
-        "income": 61625.03537284895,
-        "credit_score": 688.6367112810708,
-        "debt_to_income": 0.1004844342431336,
-        "employment_years": 3.299962652943059,
-        "age": 32.47227533460803,
-        "count": 1046.0
-      },
-      "Rising Prime": {
-        "income": 66538.5404551201,
-        "credit_score": 702.5012642225032,
-        "debt_to_income": 0.08868334384759059,
-        "employment_years": 3.3878590164213853,
-        "age": 29.995575221238937,
-        "count": 1582.0
-      },
-      "Established Prime": {
-        "income": 98469.90950639854,
-        "credit_score": 767.4360146252285,
-        "debt_to_income": 0.03961103728141095,
-        "employment_years": 10.711382422931726,
-        "age": 45.33912248628885,
-        "count": 1094.0
-      },
-      "Subprime High-Risk": {
-        "income": 38547.57746478873,
-        "credit_score": 582.3215962441315,
-        "debt_to_income": 0.27550404667064926,
-        "employment_years": 2.17105002138872,
-        "age": 32.069640062597806,
-        "count": 1278.0
-      }
-    }
+  "optimal_k": 2,
+  "silhouette_score": 0.2988,
+  "n_clusters": 4,
+  "train_accuracy": 1.0,
+  "test_accuracy": 0.978,
+  "segment_distribution": {
+    "Mass Market": 1073,
+    "Rising Prime": 1314,
+    "Established Prime": 1479,
+    "Subprime High-Risk": 1134
   },
-  "classification": {
-    "accuracy": 0.977,
-    "feature_importances": {
-      "income": 0.15533906105273027,
-      "credit_score": 0.15774813914938435,
-      "employment_years": 0.06269100339715082,
-      "debt_to_income": 0.13455182316057418,
-      "loan_history_count": 0.09119300567811581,
-      "age": 0.11732045146499133,
-      "home_ownership": 0.2561949709823715,
-      "verified_income": 0.024961545114681828
-    },
-    "test_set_size": 1000,
-    "y_test_distribution": {
-      "1": 316,
-      "3": 256,
-      "2": 219,
-      "0": 209
-    }
+  "feature_importance": {
+    "home_ownership": 0.2826,
+    "credit_score": 0.2387,
+    "income": 0.1744,
+    "debt_to_income": 0.1078,
+    "employment_years": 0.104,
+    "loan_history_count": 0.0525,
+    "age": 0.033,
+    "verified_income": 0.007
   }
 }
