@@ -1,1 +1,0 @@
-"""Customer segmentation pipeline for loan underwriting risk assessment."""

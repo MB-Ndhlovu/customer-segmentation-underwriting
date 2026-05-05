@@ -1,32 +1,68 @@
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, accuracy_score, f1_score
+import joblib
 
-
-FEATURE_COLS = ["income", "credit_score", "employment_years", "debt_to_income",
-               "loan_history_count", "age", "home_ownership", "verified_income"]
-
-
-def train_classifier(X_raw, y, test_size=0.2, random_state=42):
-    """Train RandomForest on cluster labels using raw application features."""
+def train_classifier(df, feature_cols, target_col='segment_label'):
+    X = df[feature_cols].values
+    y = df[target_col].values
+    
     X_train, X_test, y_train, y_test = train_test_split(
-        X_raw[FEATURE_COLS], y, test_size=test_size, random_state=random_state, stratify=y
+        X, y, test_size=0.2, random_state=42, stratify=y
     )
-    clf = RandomForestClassifier(n_estimators=100, random_state=random_state, n_jobs=-1)
+    
+    clf = RandomForestClassifier(
+        n_estimators=100,
+        max_depth=10,
+        min_samples_split=5,
+        random_state=42,
+        n_jobs=-1
+    )
+    
     clf.fit(X_train, y_train)
-    train_acc = accuracy_score(y_train, clf.predict(X_train))
-    test_acc = accuracy_score(y_test, clf.predict(X_test))
-    return clf, X_test, y_test, train_acc, test_acc
+    
+    y_pred = clf.predict(X_test)
+    
+    metrics = {
+        'accuracy': round(accuracy_score(y_test, y_pred), 4),
+        'f1_weighted': round(f1_score(y_test, y_pred, average='weighted'), 4),
+        'classification_report': classification_report(
+            y_test, y_pred, target_names=['Mass Market', 'Rising Prime', 'Established Prime', 'Subprime High-Risk']
+        )
+    }
+    
+    return clf, metrics
 
+def get_feature_importance(clf, feature_cols):
+    importances = clf.feature_importances_
+    indices = np.argsort(importances)[::-1]
+    
+    return {
+        feature_cols[i]: round(importances[i], 4)
+        for i in indices
+    }
 
-def feature_importance(clf):
-    """Return feature importance as a sorted Series."""
-    imp = pd.Series(clf.feature_importances_, index=FEATURE_COLS).sort_values(ascending=False)
-    return imp
-
-
-def predict_segment(clf, applicant_row):
-    """Predict segment for a single applicant record."""
-    return clf.predict([applicant_row[FEATURE_COLS]])[0]
+if __name__ == '__main__':
+    from data_loader import generate_customer_data
+    from features import engineer_features, FEATURE_COLS
+    from segment import cluster_customers, map_clusters_to_segments
+    
+    df = generate_customer_data(5000)
+    df = engineer_features(df)
+    df, km, scaler = cluster_customers(df, FEATURE_COLS)
+    df = map_clusters_to_segments(df, FEATURE_COLS)
+    
+    clf, metrics = train_classifier(df, FEATURE_COLS)
+    
+    print("Classifier Metrics:")
+    print(f"Accuracy: {metrics['accuracy']}")
+    print(f"F1 Weighted: {metrics['f1_weighted']}")
+    print("\nClassification Report:")
+    print(metrics['classification_report'])
+    
+    importance = get_feature_importance(clf, FEATURE_COLS)
+    print("\nTop Feature Importances:")
+    for feat, imp in list(importance.items())[:10]:
+        print(f"  {feat}: {imp}")

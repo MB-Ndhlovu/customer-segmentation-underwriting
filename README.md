@@ -1,39 +1,39 @@
 # Customer Segmentation for Underwriting
 
 ## Overview
+This project implements a customer segmentation system for lending underwriting using unsupervised learning (KMeans clustering) and supervised classification (Random Forest). The system segments loan applicants into 4 actionable risk tiers.
 
-A machine learning pipeline that segments loan applicants into 4 risk tiers using K-Means clustering, then trains a supervised classifier to predict segment membership from application features alone.
-
-**Segments:**
+## Segments
 | Label | Name | Profile |
 |-------|------|---------|
-| 0 | Mass Market | Low-mid income, average credit, moderate debt |
-| 1 | Rising Prime | Mid-high income, good credit, low debt, stable employment |
-| 2 | Established Prime | High income, excellent credit, low DTI, homeowners |
-| 3 | Subprime High-Risk | Low income, poor credit, high DTI, unstable employment |
+| 0 | Mass Market | Moderate income, average credit, standard risk |
+| 1 | Rising Prime | Good income & credit, stable employment, low risk |
+| 2 | Established Prime | High income, excellent credit, very low risk |
+| 3 | Subprime High-Risk | Low income, poor credit, high DTI, elevated risk |
+
+## Features Used
+- **income**: Annual income
+- **credit_score**: Credit score (300-850)
+- **employment_years**: Years at current employer
+- **debt_to_income**: Monthly debt payments / monthly income
+- **loan_history_count**: Number of previous loans
+- **age**: Customer age
+- **home_ownership**: Own/Rent/Mortgage (encoded)
+- **verified_income**: Whether income is verified (bool)
 
 ## Pipeline
-
-1. **Synthetic data generation** — 5,000 customer records with realistic distributions
-2. **Feature engineering** — RFM, behavioral, and stability features
-3. **Clustering** — K-Means with Elbow method and silhouette analysis
-4. **Classification** — RandomForest trained on cluster labels
-5. **Reporting** — JSON summary of profiles, model metrics, and segment distribution
-
-## Results
-
-- **Silhouette Score:** ~0.65–0.75 (well-separated clusters)
-- **Classification Accuracy:** ~92–97% on held-out test set
-- **Segment Distribution:** ~25% each (balanced across 4 tiers)
+1. Generate 5000 synthetic customer records
+2. Engineer RFM, behavioral, and stability features
+3. Cluster with KMeans (k=4), validate via Silhouette + Elbow
+4. Profile each segment
+5. Train Random Forest classifier on cluster labels
+6. Save segmentation results to JSON
 
 ## Business Impact
+- Enables risk-based pricing for loan products
+- Supports automated underwriting decisions
+- Identifies high-risk applicants requiring manual review
+- Targets marketing to prime customers
 
-- **Instant risk tier assignment** at application intake
-- **Reduce underwriting time** by automating first-pass segmentation
-- **Consistent scoring** across loan officers
-- **Traceable decision logic** via RandomForest feature importance
-
-## Tech Stack
-
-- Python 3.12, scikit-learn, pandas, numpy
-- RandomForestClassifier, KMeans, sklearn.metrics
+## Results Summary
+Run `python run_pipeline.py` to execute and view cluster profiles and model metrics.
