@@ -1,57 +1,37 @@
-import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
-
+import numpy as np
 
 def build_features(df):
-    """Engineer RFM, behavioral, and stability features."""
+    X = df[['income', 'credit_score', 'employment_years', 'debt_to_income',
+            'loan_history_count', 'age', 'home_ownership', 'verified_income']].copy()
 
-    # RFM-style features
-    df['income_band'] = pd.cut(df['income'], bins=[0, 35000, 55000, 80000, 200000],
-                               labels=[0, 1, 2, 3]).astype(float).fillna(0)
-    df['credit_band'] = pd.cut(df['credit_score'], bins=[0, 580, 650, 720, 850],
-                                labels=[0, 1, 2, 3]).astype(float).fillna(0)
+    # Stability score: employment tenure relative to age
+    X['stability_score'] = X['employment_years'] / (X['age'] - 18).clip(lower=1)
 
-    # Behavioral
-    df['loan_per_year'] = df['loan_history_count'] / (df['employment_years'] + 0.5)
-    df['dti_risk'] = (df['debt_to_income'] > 0.35).astype(int)
-    df['credit_utilization_proxy'] = 1 - (df['credit_score'] - 500) / 350
+    # Loan intensity: loan count per year of adulthood
+    X['loan_intensity'] = X['loan_history_count'] / (X['age'] - 18).clip(lower=1)
 
-    # Stability
-    df['employment_stability'] = df['employment_years'] / (df['age'] - 18 + 1)
-    df['income_stability'] = df['verified_income'] * (1 / (1 + df['loan_per_year']))
+    # Income adequacy: income relative to age-based expected income
+    expected_income_by_age = 30000 + (X['age'] - 25).clip(lower=0) * 2000
+    X['income_adequacy'] = X['income'] / expected_income_by_age.clip(lower=1)
 
-    # Composite risk score
-    df['risk_score'] = (
-        0.30 * (1 - (df['credit_score'] - 500) / 350) +
-        0.25 * df['debt_to_income'] +
-        0.20 * df['loan_history_count'] / 10 +
-        0.15 * (1 - df['employment_stability']) +
-        0.10 * (1 - df['home_ownership'])
-    )
+    # Credit utilization proxy (high loan count + high DTI = risk)
+    X['credit_pressure'] = X['debt_to_income'] * (1 + X['loan_history_count'] / 5)
 
-    return df
+    # Affordability score: inverse of DTI
+    X['affordability'] = (0.5 - X['debt_to_income']).clip(lower=0)
 
+    # RFM: Recency proxy via employment stability (no explicit recency in data)
+    X['recency_proxy'] = X['employment_years'] * X['verified_income']
 
-def get_feature_columns():
-    """Return feature columns used for clustering."""
-    return [
-        'income', 'credit_score', 'employment_years', 'debt_to_income',
-        'loan_history_count', 'age', 'home_ownership', 'verified_income'
-    ]
+    # Behavioral: verified + homeownership combo
+    X['verified_asset'] = X['verified_income'] * X['home_ownership']
 
+    feature_cols = list(X.columns)
+    return X, feature_cols
 
-def get_engineered_columns():
-    """Return engineered feature columns used for clustering."""
-    return [
-        'income', 'credit_score', 'employment_years', 'debt_to_income',
-        'loan_history_count', 'age', 'home_ownership', 'verified_income',
-        'income_band', 'credit_band', 'loan_per_year', 'dti_risk',
-        'credit_utilization_proxy', 'employment_stability', 'income_stability', 'risk_score'
-    ]
-
-
-def scale_features(df, columns):
+def scale_features(X):
+    from sklearn.preprocessing import StandardScaler
     scaler = StandardScaler()
-    X = scaler.fit_transform(df[columns])
-    return X, scaler
+    X_scaled = scaler.fit_transform(X)
+    return X_scaled, scaler
