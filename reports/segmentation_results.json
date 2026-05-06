@@ -1,131 +1,70 @@
 {
-  "best_k": 3,
-  "silhouette_scores": {
-    "2": 0.2672,
-    "3": 0.3159,
-    "4": 0.2205,
-    "5": 0.231,
-    "6": 0.2022,
-    "7": 0.2028,
-    "8": 0.2044
-  },
-  "inertia": 33685.604,
-  "cluster_cardinality": {
-    "0": 1260,
-    "1": 1916,
-    "2": 1101,
-    "3": 723
-  },
+  "silhouette_score": 0.2161,
   "segment_profiles": {
-    "income": {
-      "0": 61514.51966666667,
-      "1": 64082.411336116915,
-      "2": 115809.90142597638,
-      "3": 31184.688063623787
-    },
-    "credit_score": {
-      "0": 701.131746031746,
-      "1": 704.3366388308978,
-      "2": 793.9990917347866,
-      "3": 567.9654218533886
-    },
-    "employment_years": {
-      "0": 6.34352380952381,
-      "1": 6.2870668058455115,
-      "2": 18.80082652134423,
-      "3": 2.5185615491009683
-    },
-    "debt_to_income": {
-      "0": 0.2482464285714286,
-      "1": 0.2516484342379958,
-      "2": 0.19731780199818347,
-      "3": 0.47814785615491007
-    },
-    "loan_history_count": {
-      "0": 2.253174603174603,
-      "1": 2.403966597077244,
-      "2": 5.07811080835604,
-      "3": 7.752420470262794
-    },
-    "age": {
-      "0": 36.088095238095235,
-      "1": 36.27505219206681,
-      "2": 46.29155313351499,
-      "3": 28.997233748271093
-    },
-    "home_ownership": {
-      "0": 0.0,
-      "1": 1.0,
-      "2": 0.8828337874659401,
-      "3": 0.2669432918395574
-    },
-    "verified_income": {
-      "0": 0.5976190476190476,
-      "1": 0.6007306889352818,
-      "2": 0.8664850136239782,
-      "3": 0.22406639004149378
-    },
-    "segment_label": {
-      "0": 0.5674603174603174,
-      "1": 0.6096033402922756,
-      "2": 1.9963669391462306,
-      "3": 3.0
-    }
-  },
-  "classifier_accuracy": 0.984,
-  "classification_report": {
     "0": {
-      "precision": 0.984,
-      "recall": 0.9761904761904762,
-      "f1-score": 0.9800796812749004,
-      "support": 252.0
+      "name": "Mass Market",
+      "size": 900,
+      "pct": 18.0,
+      "mean_income": 45009.0,
+      "mean_credit_score": 635.6,
+      "mean_employment_years": 2.75,
+      "mean_debt_to_income": 0.262,
+      "mean_loan_history_count": 1.82,
+      "mean_age": 32.9,
+      "pct_homeowners": 47.6,
+      "pct_verified_income": 0.0
     },
     "1": {
-      "precision": 0.9973614775725593,
-      "recall": 0.9869451697127938,
-      "f1-score": 0.9921259842519685,
-      "support": 383.0
+      "name": "Rising Prime",
+      "size": 1578,
+      "pct": 31.6,
+      "mean_income": 47858.0,
+      "mean_credit_score": 641.9,
+      "mean_employment_years": 3.09,
+      "mean_debt_to_income": 0.265,
+      "mean_loan_history_count": 1.69,
+      "mean_age": 33.5,
+      "pct_homeowners": 46.1,
+      "pct_verified_income": 100.0
     },
     "2": {
-      "precision": 0.9772727272727273,
-      "recall": 0.9772727272727273,
-      "f1-score": 0.9772727272727273,
-      "support": 220.0
+      "name": "Established Prime",
+      "size": 821,
+      "pct": 16.4,
+      "mean_income": 29014.0,
+      "mean_credit_score": 562.0,
+      "mean_employment_years": 1.33,
+      "mean_debt_to_income": 0.417,
+      "mean_loan_history_count": 5.07,
+      "mean_age": 29.8,
+      "pct_homeowners": 19.2,
+      "pct_verified_income": 37.3
     },
     "3": {
-      "precision": 0.9602649006622517,
-      "recall": 1.0,
-      "f1-score": 0.9797297297297297,
-      "support": 145.0
-    },
-    "accuracy": 0.984,
-    "macro avg": {
-      "precision": 0.9797247763768846,
-      "recall": 0.9851020932939993,
-      "f1-score": 0.9823020306323316,
-      "support": 1000.0
-    },
-    "weighted avg": {
-      "precision": 0.9841958565063167,
-      "recall": 0.984,
-      "f1-score": 0.9840251424605897,
-      "support": 1000.0
+      "name": "Subprime High-Risk",
+      "size": 1701,
+      "pct": 34.0,
+      "mean_income": 93662.0,
+      "mean_credit_score": 749.5,
+      "mean_employment_years": 6.94,
+      "mean_debt_to_income": 0.191,
+      "mean_loan_history_count": 3.23,
+      "mean_age": 42.7,
+      "pct_homeowners": 85.6,
+      "pct_verified_income": 90.8
     }
   },
+  "classification_accuracy": 0.9592,
   "feature_importance": {
-    "income": 0.0699,
-    "credit_score": 0.082,
-    "employment_years": 0.0767,
-    "debt_to_income": 0.0351,
-    "loan_history_count": 0.0362,
-    "age": 0.0149,
-    "home_ownership": 0.1635,
-    "verified_income": 0.0007,
-    "income_per_loan": 0.075,
-    "credit_per_year": 0.0475,
-    "debt_burden": 0.0533,
-    "stability_score": 0.2069,
-    "credit_age_ratio": 0.0074,
-    "income_stability": 0.1309
-  }
+    "credit_score": 0.2494,
+    "verified_income": 0.2362,
+    "income": 0.1912,
+    "debt_to_income": 0.1204,
+    "loan_history_count": 0.089,
+    "age": 0.0492,
+    "employment_years": 0.0361,
+    "home_ownership": 0.0284
+  },
+  "n_clusters": 4,
+  "total_customers": 5000
 }
