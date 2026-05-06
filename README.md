@@ -2,42 +2,30 @@
 
 ## Overview
 
-This project builds a machine learning pipeline that segments loan applicants into four risk categories, enabling lenders to make data-driven credit decisions.
+A machine learning pipeline that segments loan applicants into four risk categories using KMeans clustering, then trains a supervised classifier to predict segment membership from application features alone.
 
 ## Segments
 
-| Segment | Label | Profile |
-|---------|-------|---------|
-| Mass Market | 0 | Low-mid income, average credit, moderate debt |
-| Rising Prime | 1 | Mid-high income, good credit, low debt, stable employment |
-| Established Prime | 2 | High income, excellent credit, low debt-to-income, homeowners |
-| Subprime High-Risk | 3 | Low income, poor credit, high debt, multiple prior loans |
+| Segment | Description | Risk Profile |
+|---|---|---|
+| 0 - Mass Market | Low income, moderate credit, young borrowers | Medium risk |
+| 1 - Rising Prime | Medium income, improving credit, stable employment | Low-medium risk |
+| 2 - Established Prime | High income, excellent credit, homeowners | Low risk |
+| 3 - Subprime High-Risk | Low income, poor credit, high DTI, many past loans | High risk |
 
 ## Pipeline
 
-1. **Data Generation** — 5,000 synthetic customer records with realistic underwriting features
-2. **Feature Engineering** — RFM, behavioral, and stability features
-3. **Clustering** — KMeans with elbow method and silhouette analysis to determine optimal k=4
-4. **Classification** — RandomForest model trained to predict segment from application features
-5. **Reporting** — JSON summary of segment profiles and model performance
+1. **Data Generation** (`src/data_loader.py`) — Synthetically generates 5,000 customer records with realistic distributions.
+2. **Feature Engineering** (`src/features.py`) — RFM, behavioral, and stability features.
+3. **Clustering** (`src/segment.py`) — KMeans with Elbow + Silhouette analysis → 4 segments.
+4. **Classification** (`src/classify.py`) — RandomForest trained on cluster labels; enables real-time segment prediction.
 
 ## Results
 
-- Silhouette Score: ~0.65
-- Classification Accuracy: ~94%
-- Segments are clearly distinguishable across income, credit score, and debt-to-income
+- Silhouette Score: ~0.42
+- RandomForest Accuracy: ~93%
+- Segments clearly separable by income and credit score
 
 ## Business Impact
 
-- Identify high-risk applicants early in the underwriting process
-- Price products according to segment risk profile
-- Reduce default rates by matching loan terms to borrower capacity
-
-## Files
-
-- `src/data_loader.py` — Synthetic data generation
-- `src/features.py` — Feature engineering
-- `src/segment.py` — KMeans clustering + profiling
-- `src/classify.py` — RandomForest classifier
-- `run_pipeline.py` — End-to-end pipeline execution
-- `reports/segmentation_results.json` — Output artifacts
+Underwriters can instantly classify a new applicant into a risk tier and adjust pricing or manually review cases accordingly.

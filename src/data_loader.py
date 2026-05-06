@@ -1,4 +1,4 @@
-"""Synthetic customer dataset generator for underwriting segmentation."""
+"""Synthetic customer dataset generator for loan underwriting segmentation."""
 
 import numpy as np
 import pandas as pd
@@ -6,103 +6,51 @@ from sklearn.preprocessing import LabelEncoder
 
 np.random.seed(42)
 
-SEGMENT_CONFIGS = {
-    0: {  # Mass Market
-        'income': ('uniform', 25000, 65000),
-        'credit_score': ('uniform', 580, 700),
-        'employment_years': ('uniform', 1, 10),
-        'debt_to_income': ('uniform', 0.15, 0.40),
-        'loan_history_count': ('uniform', 0, 4),
-        'age': ('uniform', 22, 45),
-        'home_ownership': ('categorical', [0.6, 0.4]),  # Rent, Own
-        'verified_income': ('categorical', [0.5, 0.5]),  # Verified, Not Verified
-    },
-    1: {  # Rising Prime
-        'income': ('uniform', 55000, 95000),
-        'credit_score': ('uniform', 680, 780),
-        'employment_years': ('uniform', 3, 15),
-        'debt_to_income': ('uniform', 0.10, 0.30),
-        'loan_history_count': ('uniform', 1, 5),
-        'age': ('uniform', 28, 50),
-        'home_ownership': ('categorical', [0.5, 0.5]),
-        'verified_income': ('categorical', [0.7, 0.3]),
-    },
-    2: {  # Established Prime
-        'income': ('uniform', 80000, 180000),
-        'credit_score': ('uniform', 740, 850),
-        'employment_years': ('uniform', 8, 30),
-        'debt_to_income': ('uniform', 0.05, 0.25),
-        'loan_history_count': ('uniform', 2, 7),
-        'age': ('uniform', 35, 60),
-        'home_ownership': ('categorical', [0.2, 0.8]),
-        'verified_income': ('categorical', [0.85, 0.15]),
-    },
-    3: {  # Subprime High-Risk
-        'income': ('uniform', 18000, 40000),
-        'credit_score': ('uniform', 450, 600),
-        'employment_years': ('uniform', 0, 5),
-        'debt_to_income': ('uniform', 0.35, 0.65),
-        'loan_history_count': ('uniform', 3, 10),
-        'age': ('uniform', 20, 40),
-        'home_ownership': ('categorical', [0.85, 0.15]),
-        'verified_income': ('categorical', [0.3, 0.7]),
-    },
-}
-
-SEGMENT_WEIGHTS = [0.35, 0.25, 0.20, 0.20]  # Probability of each segment
-
 
 def generate_customer_data(n=5000):
-    """Generate synthetic customer dataset with realistic underwriting features."""
-    segment_labels = np.random.choice(4, size=n, p=SEGMENT_WEIGHTS)
-    
-    data = {
-        'income': np.zeros(n),
-        'credit_score': np.zeros(n),
-        'employment_years': np.zeros(n),
-        'debt_to_income': np.zeros(n),
-        'loan_history_count': np.zeros(n),
-        'age': np.zeros(n),
-        'home_ownership': np.zeros(n),
-        'verified_income': np.zeros(n),
-        'segment_label': segment_labels,
+    """Generate synthetic customer records with realistic distributions."""
+    segments = {
+        0: dict(income_mean=45000, income_std=12000, credit_mean=640, credit_std=60,
+                emp_mean=3, emp_std=1.5, dti_mean=0.28, dti_std=0.08, loans_mean=1.5,
+                loans_std=1.0, age_mean=28, age_std=5, home_prob=0.20, verified_prob=0.35),
+        1: dict(income_mean=72000, income_std=18000, credit_mean=710, credit_std=50,
+                emp_mean=6, emp_std=2.0, dti_mean=0.22, dti_std=0.07, loans_mean=2.0,
+                loans_std=1.2, age_mean=35, age_std=6, home_prob=0.45, verified_prob=0.60),
+        2: dict(income_mean=110000, income_std=30000, credit_mean=770, credit_std=40,
+                emp_mean=10, emp_std=3.0, dti_mean=0.18, dti_std=0.05, loans_mean=2.5,
+                loans_std=1.5, age_mean=42, age_std=8, home_prob=0.80, verified_prob=0.85),
+        3: dict(income_mean=32000, income_std=8000, credit_mean=560, credit_std=45,
+                emp_mean=2, emp_std=1.0, dti_mean=0.40, dti_std=0.10, loans_mean=4.5,
+                loans_std=2.0, age_mean=30, age_std=7, home_prob=0.10, verified_prob=0.15),
     }
-    
-    for seg_id, config in SEGMENT_CONFIGS.items():
-        mask = segment_labels == seg_id
-        count = mask.sum()
-        
-        for feat, (dist_type, *params) in config.items():
-            if dist_type == 'uniform':
-                low, high = params
-                data[feat][mask] = np.random.uniform(low, high, count)
-            elif dist_type == 'categorical':
-                probs = params[0]
-                data[feat][mask] = np.random.choice([0, 1], size=count, p=probs)
-    
-    # Add slight noise for realism
-    for col in ['income', 'credit_score', 'employment_years', 'debt_to_income', 'loan_history_count', 'age']:
-        data[col] += np.random.normal(0, data[col].std() * 0.02, n)
-        data[col] = np.clip(data[col], 0, None)
-    
-    df = pd.DataFrame(data)
-    
-    # Round appropriate columns
-    df['income'] = df['income'].round(2)
-    df['credit_score'] = df['credit_score'].round(0).astype(int)
-    df['employment_years'] = df['employment_years'].round(1)
-    df['debt_to_income'] = df['debt_to_income'].round(4)
-    df['loan_history_count'] = df['loan_history_count'].round(0).astype(int)
-    df['age'] = df['age'].round(0).astype(int)
-    df['home_ownership'] = df['home_ownership'].astype(int)
-    df['verified_income'] = df['verified_income'].astype(int)
-    df['segment_label'] = df['segment_label'].astype(int)
-    
+
+    records = []
+    for seg_id, params in segments.items():
+        for _ in range(n // 4):
+            income = max(15000, np.random.normal(params['income_mean'], params['income_std']))
+            credit_score = max(300, min(850, np.random.normal(params['credit_mean'], params['credit_std'])))
+            employment_years = max(0, np.random.normal(params['emp_mean'], params['emp_std']))
+            debt_to_income = max(0.05, min(0.80, np.random.normal(params['dti_mean'], params['dti_std'])))
+            loan_history_count = max(0, int(np.random.normal(params['loans_mean'], params['loans_std'])))
+            age = max(18, min(75, np.random.normal(params['age_mean'], params['age_std'])))
+            home_ownership = 1 if np.random.random() < params['home_prob'] else 0
+            verified_income = 1 if np.random.random() < params['verified_prob'] else 0
+
+            records.append({
+                'income': round(income, 2),
+                'credit_score': round(credit_score, 1),
+                'employment_years': round(employment_years, 2),
+                'debt_to_income': round(debt_to_income, 4),
+                'loan_history_count': loan_history_count,
+                'age': int(age),
+                'home_ownership': home_ownership,
+                'verified_income': verified_income,
+            })
+
+    df = pd.DataFrame(records)
     return df
 
 
-if __name__ == '__main__':
-    df = generate_customer_data()
-    print(df.head())
-    print(f"\nDataset shape: {df.shape}")
-    print(f"\nSegment distribution:\n{df['segment_label'].value_counts().sort_index()}")
+def get_feature_names():
+    return ['income', 'credit_score', 'employment_years', 'debt_to_income',
+            'loan_history_count', 'age', 'home_ownership', 'verified_income']
