@@ -1,81 +1,94 @@
-"""
-Full pipeline: load data → engineer features → cluster → classify → save results.
-"""
+"""Full pipeline: generate data → segment → classify → save results."""
 
-from sklearn.metrics import silhouette_score
-import os, json, joblib
-from src.data_loader import load_customer_data
-from src.features import compute_features
-from src.segment import cluster_customers, find_optimal_k, profile_segments
-from src.classify import train_classifier
+import json
+import sys
+import warnings
+warnings.filterwarnings("ignore")
 
-REPORT_DIR = '/home/workspace/Projects/customer-segmentation-underwriting/reports'
-os.makedirs(REPORT_DIR, exist_ok=True)
+from src.data_loader import generate_customer_data, get_feature_columns
+from src.segment import run_segmentation, SEGMENT_NAMES
+from src.classify import train_segment_classifier
 
-print("=" * 60)
-print("CUSTOMER SEGMENTATION PIPELINE — Underwriting")
-print("=" * 60)
 
-# 1. Load data
-print("\n[1] Loading / generating customer data...")
-df = load_customer_data(n=5000)
-print(f"  Dataset shape: {df.shape}")
-print(f"  Segment distribution:\n{df['segment_label'].value_counts().sort_index().to_string()}")
+def run():
+    print("=" * 60)
+    print("CUSTOMER SEGMENTATION — UNDERWRITING PIPELINE")
+    print("=" * 60)
 
-# 2. Feature engineering
-print("\n[2] Engineering features...")
-X, scaler, feature_names = compute_features(df)
-print(f"  Feature matrix shape: {X.shape}")
+    # Step 1: Generate synthetic data
+    print("\n[1/4] Generating 5000 synthetic customer records...")
+    df = generate_customer_data(n=5000)
+    feature_cols = get_feature_columns()
+    print(f"    Features: {feature_cols}")
+    print(f"    Shape: {df.shape}")
 
-# 3. Clustering
-print("\n[3] Running KMeans clustering (k=4)...")
-labels, kmeans, inertia = cluster_customers(X, n_clusters=4)
-sil_score = silhouette_score(X, labels)
-print(f"  Inertia: {inertia:.0f}")
-print(f"  Silhouette Score: {sil_score:.4f}")
+    # Step 2: KMeans segmentation
+    print("\n[2/4] Running KMeans segmentation...")
+    km, labels, scaler, seg_summary, sil, sil_samples = run_segmentation(
+        df, feature_cols, n_clusters=4
+    )
+    df["segment_label"] = labels
+    print(f"    Silhouette Score: {sil:.4f}")
 
-print("\n[4] Silhouette analysis (k=2..8)...")
-sil_dict = find_optimal_k(X)
+    # Step 3: Train supervised classifier
+    print("\n[3/4] Training RandomForest classifier...")
+    clf, clf_metrics = train_segment_classifier(
+        df, feature_cols, labels, test_size=0.2, random_state=42
+    )
 
-# 5. Profile segments
-print("\n[5] Profiling segments...")
-profiles = profile_segments(df, labels)
+    # Step 4: Build final report
+    print("\n[4/4] Saving results...")
 
-# 6. Train classifier
-print("\n[6] Training RandomForest classifier...")
-clf, acc, y_test, y_pred = train_classifier(X, labels)
+    # Segment mapping
+    seg_name_map = {str(k): v for k, v in SEGMENT_NAMES.items()}
 
-# 7. Save artifacts
-print("\n[7] Saving artifacts...")
-joblib.dump(kmeans, f'{REPORT_DIR}/kmeans_model.pkl')
-joblib.dump(scaler, f'{REPORT_DIR}/feature_scaler.pkl')
-joblib.dump(clf, f'{REPORT_DIR}/segment_classifier.pkl')
+    results = {
+        "pipeline": "Customer Segmentation for Underwriting",
+        "n_customers": int(len(df)),
+        "n_features": len(feature_cols),
+        "features": feature_cols,
+        "segmentation": {
+            "method": "KMeans",
+            "n_clusters": seg_summary["n_clusters"],
+            "silhouette_score": seg_summary["silhouette_score"],
+            "k_search_summary": seg_summary["k_search_results"],
+            "segment_names": seg_name_map,
+            "segment_profiles": seg_summary["segment_profiles"],
+        },
+        "classification": {
+            "method": "RandomForestClassifier",
+            "accuracy": clf_metrics["accuracy"],
+            "f1_weighted": clf_metrics["f1_weighted"],
+            "n_train": clf_metrics["n_train"],
+            "n_test": clf_metrics["n_test"],
+            "feature_importance": clf_metrics["feature_importance"],
+            "confusion_matrix": clf_metrics["confusion_matrix"],
+            "classification_report": clf_metrics["classification_report"],
+        },
+    }
 
-# Save JSON report
-segment_names = {0: 'Mass Market', 1: 'Rising Prime', 2: 'Established Prime', 3: 'Subprime High-Risk'}
-results = {
-    'silhouette_score': round(sil_score, 4),
-    'inertia': round(inertia, 2),
-    'n_clusters': 4,
-    'classification_accuracy': round(acc, 4),
-    'segment_profiles': {
-        int(c): {k: round(v, 4) for k, v in row.items() if k != 'cluster'}
-        for c, row in profiles.iterrows()
-    },
-    'segment_names': segment_names,
-    'feature_names': feature_names,
-    'optimal_k_analysis': {str(k): round(v, 4) for k, v in sil_dict.items()}
-}
+    # Save report
+    import os
+    os.makedirs("reports", exist_ok=True)
+    with open("reports/segmentation_results.json", "w") as f:
+        json.dump(results, f, indent=2)
 
-with open(f'{REPORT_DIR}/segmentation_results.json', 'w') as f:
-    json.dump(results, f, indent=2)
+    print("\n" + "=" * 60)
+    print("PIPELINE COMPLETE — RESULTS SUMMARY")
+    print("=" * 60)
+    print(f"\nSilhouette Score: {sil:.4f}")
+    print(f"Optimal k chosen: {seg_summary['n_clusters']}")
+    print(f"\nSegment distribution:")
+    for cid, prof in seg_summary["segment_profiles"].items():
+        print(f"  Cluster {cid} [{prof['segment_name']}]: {prof['count']} customers ({prof['pct']}%)")
+    print(f"\nClassifier Accuracy: {clf_metrics['accuracy']:.4f}")
+    print(f"Classifier F1 (weighted): {clf_metrics['f1_weighted']:.4f}")
+    print(f"Top feature: {list(clf_metrics['feature_importance'].keys())[0]}")
+    print(f"\nResults saved to: reports/segmentation_results.json")
+    print("=" * 60)
 
-print(f"  Saved: kmeans_model.pkl, feature_scaler.pkl, segment_classifier.pkl")
-print(f"  Saved: segmentation_results.json")
-print(f"  Saved: elbow_silhouette.png")
+    return results
 
-print("\n" + "=" * 60)
-print("PIPELINE COMPLETE")
-print(f"  Silhouette Score: {sil_score:.4f}")
-print(f"  Classification Accuracy: {acc:.4f}")
-print("=" * 60)
+
+if __name__ == "__main__":
+    results = run()

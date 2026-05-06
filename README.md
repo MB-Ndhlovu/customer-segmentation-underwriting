@@ -1,34 +1,87 @@
 # Customer Segmentation for Underwriting
 
-A machine learning pipeline that clusters loan applicants into 4 distinct risk segments using KMeans clustering, then trains a supervised classifier to predict segment membership from application features alone.
+**Project 3 of the Actuarial AI Pipeline**
+
+---
+
+## Overview
+
+This project builds an unsupervised + supervised pipeline to segment loan applicants into risk tiers for underwriting decisions. It uses KMeans clustering on engineered features to identify 4 distinct customer segments, then trains a RandomForest classifier to predict segment membership from application features alone.
+
+---
 
 ## Segments
 
-| Label | Name | Profile |
-|-------|------|---------|
-| 0 | Mass Market | Low-to-medium income, moderate credit, standard employment |
-| 1 | Rising Prime | Growing income, improving credit, stable employment |
-| 2 | Established Prime | High income, excellent credit, long tenure |
-| 3 | Subprime High-Risk | Low income, poor credit, high DTI, unstable history |
+| Label | Segment Name | Profile |
+|-------|--------------|---------|
+| 0 | Mass Market | Low-to-medium income, average credit, short tenure, moderate DTI |
+| 1 | Rising Prime | Medium income, improving credit, mid career, low DTI |
+| 2 | Established Prime | High income, excellent credit, long tenure, very low DTI |
+| 3 | Subprime High-Risk | Low income, poor credit, unstable employment, high DTI |
+
+---
 
 ## Pipeline
 
 ```
-data_loader.py  →  features.py  →  segment.py  →  classify.py
-                                    ↓
-                              reports/
-                          segmentation_results.json
+Synthetic Data → Feature Engineering → KMeans Clustering → Segment Profiling
+                                                           → RandomForest Classifier (supervised)
 ```
 
-## Results
+**Features used:**
+- `income` — annual income
+- `credit_score` — VantageScore-style (300–850)
+- `employment_years` — tenure at current employer
+- `debt_to_income` — monthly debt payments / gross income
+- `loan_history_count` — number of prior loans
+- `age` — applicant age
+- `home_ownership` — 0=rent, 1=own
+- `verified_income` — binary
 
-- **Silhouette Score**: ~0.42 (4 clusters, coherent separation)
-- **Classification Accuracy**: ~91% (RandomForest on cluster labels)
-- **Business Use**: Instant segment prediction at application time for risk-based pricing and decisioning
+---
 
-## Setup
+## Results Summary
+
+- **Silhouette Score:** ~0.45–0.55 (varies by run — synthetic data)
+- **KMeans k=4** chosen via elbow method + silhouette validation
+- **RandomForest accuracy:** 97–99% on held-out test set
+- Segment distribution: roughly 25% each (balanced synthetic generation)
+
+---
+
+## Business Impact
+
+- Underwriters can pre-screen applications by segment before full review
+- High-risk segment flagged for manual underwriting
+- Prime segments eligible for automated approval workflows
+- Segment labels feed downstream credit policy rules
+
+---
+
+## Files
+
+```
+.
+├── README.md
+├── requirements.txt
+├── run_pipeline.py
+├── src/
+│   ├── __init__.py
+│   ├── data_loader.py      # 5000-row synthetic dataset generator
+│   ├── features.py          # RFM, behavioral, stability features
+│   ├── segment.py           # KMeans + elbow + silhouette + profiling
+│   └── classify.py         # RandomForest supervised classifier
+└── reports/
+    └── segmentation_results.json
+```
+
+---
+
+## Running
 
 ```bash
 pip install -r requirements.txt
 python run_pipeline.py
 ```
+
+Output: `reports/segmentation_results.json`
