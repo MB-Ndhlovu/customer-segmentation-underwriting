@@ -1,75 +1,63 @@
-"""KMeans clustering with Elbow method, Silhouette analysis, and segment profiling."""
+"""
+KMeans clustering with silhouette analysis and elbow method.
+Profiles each resulting segment.
+"""
 
 import numpy as np
-import pandas as pd
 from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score, silhouette_samples
-import json
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 
-def find_optimal_k(X_scaled, k_range=range(2, 11)):
-    """Run Elbow + Silhouette analysis; return best k."""
+def cluster_customers(X, n_clusters=4, random_state=42):
+    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=20)
+    labels = kmeans.fit_predict(X)
+    inertia = kmeans.inertia_
+    return labels, kmeans, inertia
+
+
+def find_optimal_k(X, k_range=range(2, 9)):
+    """
+    Compute inertias and silhouette scores for a range of k.
+    Returns lists and saves elbow plot.
+    """
     inertias, silhouettes = [], []
     for k in k_range:
-        km = KMeans(n_clusters=k, random_state=42, n_init=10)
-        km.fit(X_scaled)
-        inertias.append(km.inertia_)
-        silhouettes.append(silhouette_score(X_scaled, km.labels_))
+        labels, _, inertia = cluster_customers(X, n_clusters=k)
+        inertias.append(inertia)
+        sil = silhouette_score(X, labels)
+        silhouettes.append(sil)
+        print(f"  k={k}  inertia={inertia:.0f}  silhouette={sil:.4f}")
 
-    best_k = list(k_range)[np.argmax(silhouettes)]
-    return best_k, inertias, silhouettes
+    # Plot elbow + silhouette
+    fig, ax1 = plt.subplots()
+    ax2 = ax1.twinx()
+    ax1.plot(list(k_range), inertias, 'b-o', label='Inertia')
+    ax2.plot(list(k_range), silhouettes, 'g--x', label='Silhouette')
+    ax1.set_xlabel('k'); ax1.set_ylabel('Inertia', color='b'); ax2.set_ylabel('Silhouette', color='g')
+    plt.title('Elbow + Silhouette Analysis')
+    plt.tight_layout()
+    plt.savefig('/home/workspace/Projects/customer-segmentation-underwriting/reports/elbow_silhouette.png', dpi=150)
+    plt.close()
+    print("Saved elbow plot to reports/elbow_silhouette.png")
+
+    return dict(zip(k_range, silhouettes))
 
 
-def cluster(X_scaled, n_clusters=4):
-    """Fit KMeans and return labels."""
-    km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    labels = km.fit_predict(X_scaled)
-    return labels, km
-
-
-def profile_segments(df, labels, feature_cols):
-    """Produce summary statistics for each segment."""
+def profile_segments(df, labels):
+    """Profile each cluster with mean values."""
     df_temp = df.copy()
-    df_temp['segment'] = labels
-    profiles = {}
-    segment_names = {0: 'Mass Market', 1: 'Rising Prime', 2: 'Established Prime', 3: 'Subprime High-Risk'}
-
-    for seg_id in sorted(df_temp['segment'].unique()):
-        sub = df_temp[df_temp['segment'] == seg_id]
-        profiles[int(seg_id)] = {
-            'name': segment_names.get(seg_id, f'Segment {seg_id}'),
-            'count': int(len(sub)),
-            'pct': round(len(sub) / len(df_temp) * 100, 1),
-            'mean_income': round(float(sub['income'].mean()), 2),
-            'mean_credit_score': round(float(sub['credit_score'].mean()), 1),
-            'mean_debt_to_income': round(float(sub['debt_to_income'].mean()), 4),
-            'mean_employment_years': round(float(sub['employment_years'].mean()), 2),
-            'mean_loan_history_count': round(float(sub['loan_history_count'].mean()), 2),
-            'pct_homeowners': round(float(sub['home_ownership'].mean()) * 100, 1),
-            'pct_verified_income': round(float(sub['verified_income'].mean()) * 100, 1),
-        }
-
-    # Map cluster IDs to meaningful names based on characteristics
-    # Sort by income desc to assign labels: highest income = Established Prime, etc.
-    seg_by_income = sorted(profiles.keys(), key=lambda k: profiles[k]['mean_income'], reverse=True)
-    label_map = {
-        seg_by_income[0]: 'Established Prime',   # highest income
-        seg_by_income[1]: 'Rising Prime',          # second highest income
-        seg_by_income[2]: 'Mass Market',           # middle
-        seg_by_income[3]: 'Subprime High-Risk',    # lowest income / highest DTI
-    }
-
-    return profiles, label_map
-
-
-def save_results(profiles, seg_summary, silhouette_avg, report_path):
-    """Save segmentation results to JSON."""
-    results = {
-        'segments': {str(k): {**v, 'label': seg_summary.get(k, 'Unknown')} for k, v in profiles.items()},
-        'silhouette_score': round(float(silhouette_avg), 4),
-        'n_segments': len(profiles),
-    }
-    with open(report_path, 'w') as f:
-        json.dump(results, f, indent=2)
-    return results
+    df_temp['cluster'] = labels
+    profiles = df_temp.groupby('cluster').mean(numeric_only=True)
+    counts = df_temp['cluster'].value_counts().sort_index()
+    print("\n=== Segment Profiles ===")
+    for c in sorted(df_temp['cluster'].unique()):
+        seg_names = {0: 'Mass Market', 1: 'Rising Prime', 2: 'Established Prime', 3: 'Subprime High-Risk'}
+        print(f"\nCluster {c} ({seg_names.get(c, 'Unknown')}) — {counts[c]} customers")
+        row = profiles.loc[c]
+        for col, val in row.items():
+            if col != 'cluster':
+                print(f"  {col}: {val:.2f}")
+    return profiles

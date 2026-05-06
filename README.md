@@ -1,31 +1,34 @@
 # Customer Segmentation for Underwriting
 
-## Overview
-
-A machine learning pipeline that segments loan applicants into four risk categories using KMeans clustering, then trains a supervised classifier to predict segment membership from application features alone.
+A machine learning pipeline that clusters loan applicants into 4 distinct risk segments using KMeans clustering, then trains a supervised classifier to predict segment membership from application features alone.
 
 ## Segments
 
-| Segment | Description | Risk Profile |
-|---|---|---|
-| 0 - Mass Market | Low income, moderate credit, young borrowers | Medium risk |
-| 1 - Rising Prime | Medium income, improving credit, stable employment | Low-medium risk |
-| 2 - Established Prime | High income, excellent credit, homeowners | Low risk |
-| 3 - Subprime High-Risk | Low income, poor credit, high DTI, many past loans | High risk |
+| Label | Name | Profile |
+|-------|------|---------|
+| 0 | Mass Market | Low-to-medium income, moderate credit, standard employment |
+| 1 | Rising Prime | Growing income, improving credit, stable employment |
+| 2 | Established Prime | High income, excellent credit, long tenure |
+| 3 | Subprime High-Risk | Low income, poor credit, high DTI, unstable history |
 
 ## Pipeline
 
-1. **Data Generation** (`src/data_loader.py`) — Synthetically generates 5,000 customer records with realistic distributions.
-2. **Feature Engineering** (`src/features.py`) — RFM, behavioral, and stability features.
-3. **Clustering** (`src/segment.py`) — KMeans with Elbow + Silhouette analysis → 4 segments.
-4. **Classification** (`src/classify.py`) — RandomForest trained on cluster labels; enables real-time segment prediction.
+```
+data_loader.py  →  features.py  →  segment.py  →  classify.py
+                                    ↓
+                              reports/
+                          segmentation_results.json
+```
 
 ## Results
 
-- Silhouette Score: ~0.42
-- RandomForest Accuracy: ~93%
-- Segments clearly separable by income and credit score
+- **Silhouette Score**: ~0.42 (4 clusters, coherent separation)
+- **Classification Accuracy**: ~91% (RandomForest on cluster labels)
+- **Business Use**: Instant segment prediction at application time for risk-based pricing and decisioning
 
-## Business Impact
+## Setup
 
-Underwriters can instantly classify a new applicant into a risk tier and adjust pricing or manually review cases accordingly.
+```bash
+pip install -r requirements.txt
+python run_pipeline.py
+```

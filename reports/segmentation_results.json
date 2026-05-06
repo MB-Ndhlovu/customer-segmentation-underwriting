@@ -1,58 +1,77 @@
 {
-  "segments": {
+  "silhouette_score": 0.1827,
+  "inertia": 22595.16,
+  "n_clusters": 4,
+  "classification_accuracy": 0.9448,
+  "segment_profiles": {
     "0": {
-      "name": "Mass Market",
-      "count": 1001,
-      "pct": 20.0,
-      "mean_income": 58168.35,
-      "mean_credit_score": 672.4,
-      "mean_debt_to_income": 0.2543,
-      "mean_employment_years": 4.4,
-      "mean_loan_history_count": 1.27,
-      "pct_homeowners": 22.4,
-      "pct_verified_income": 100.0,
-      "label": "Rising Prime"
+      "income": 66074.1649,
+      "credit_score": 693.7436,
+      "employment_years": 5.4988,
+      "debt_to_income": 1.7034,
+      "loan_history_count": 2.0376,
+      "age": 38.952,
+      "home_ownership": 1.0,
+      "verified_income": 0.6165,
+      "segment_label": 0.6411
     },
     "1": {
-      "name": "Rising Prime",
-      "count": 1477,
-      "pct": 29.5,
-      "mean_income": 105170.69,
-      "mean_credit_score": 762.1,
-      "mean_debt_to_income": 0.1829,
-      "mean_employment_years": 9.42,
-      "mean_loan_history_count": 2.07,
-      "pct_homeowners": 84.3,
-      "pct_verified_income": 82.7,
-      "label": "Established Prime"
+      "income": 112514.6855,
+      "credit_score": 776.9635,
+      "employment_years": 10.1848,
+      "debt_to_income": 1.1788,
+      "loan_history_count": 1.2204,
+      "age": 46.5584,
+      "home_ownership": 0.9053,
+      "verified_income": 0.8584,
+      "segment_label": 1.8566
     },
     "2": {
-      "name": "Established Prime",
-      "count": 1146,
-      "pct": 22.9,
-      "mean_income": 31905.66,
-      "mean_credit_score": 555.8,
-      "mean_debt_to_income": 0.4087,
-      "mean_employment_years": 2.01,
-      "mean_loan_history_count": 4.22,
-      "pct_homeowners": 8.8,
-      "pct_verified_income": 13.9,
-      "label": "Subprime High-Risk"
+      "income": 60357.9392,
+      "credit_score": 681.956,
+      "employment_years": 5.3961,
+      "debt_to_income": 1.7129,
+      "loan_history_count": 2.1555,
+      "age": 39.2965,
+      "home_ownership": 0.0,
+      "verified_income": 0.586,
+      "segment_label": 0.4181
     },
     "3": {
-      "name": "Subprime High-Risk",
-      "count": 1376,
-      "pct": 27.5,
-      "mean_income": 53574.91,
-      "mean_credit_score": 661.4,
-      "mean_debt_to_income": 0.2583,
-      "mean_employment_years": 3.96,
-      "mean_loan_history_count": 1.23,
-      "pct_homeowners": 25.9,
-      "pct_verified_income": 0.0,
-      "label": "Mass Market"
+      "income": 37624.2383,
+      "credit_score": 591.0254,
+      "employment_years": 2.564,
+      "debt_to_income": 3.6805,
+      "loan_history_count": 4.5669,
+      "age": 35.6032,
+      "home_ownership": 0.2018,
+      "verified_income": 0.2959,
+      "segment_label": 2.2755
     }
   },
-  "silhouette_score": 0.2312,
-  "n_segments": 4
+  "segment_names": {
+    "0": "Mass Market",
+    "1": "Rising Prime",
+    "2": "Established Prime",
+    "3": "Subprime High-Risk"
+  },
+  "feature_names": [
+    "income",
+    "credit_score",
+    "employment_years",
+    "debt_to_income",
+    "loan_history_count",
+    "age",
+    "home_ownership",
+    "verified_income"
+  ],
+  "optimal_k_analysis": {
+    "2": 0.2312,
+    "3": 0.1704,
+    "4": 0.1827,
+    "5": 0.1824,
+    "6": 0.2008,
+    "7": 0.1992,
+    "8": 0.1955
+  }
 }
