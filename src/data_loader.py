@@ -1,128 +1,89 @@
-"""Synthetic customer dataset generator for underwriting segmentation."""
-
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+from faker import Faker
 
+fake = Faker()
+Faker.seed(42)
 np.random.seed(42)
 
-# Segment definitions for synthetic generation
-# We generate 4 clusters and label them after KMeans, but seed so shapes are distinct
-SEGMENT_PARAMS = {
-    0: {  # Mass Market
-        "income": (35000, 75000),
-        "credit_score": (580, 700),
-        "employment_years": (0.5, 6),
-        "debt_to_income": (0.15, 0.35),
-        "loan_history_count": (1, 5),
-        "age": (22, 45),
-        "home_ownership": 0.3,  # 30% own
-        "verified_income": 0.6,
-    },
-    1: {  # Rising Prime
-        "income": (65000, 120000),
-        "credit_score": (680, 760),
-        "employment_years": (3, 12),
-        "debt_to_income": (0.10, 0.28),
-        "loan_history_count": (2, 7),
-        "age": (28, 50),
-        "home_ownership": 0.55,
-        "verified_income": 0.75,
-    },
-    2: {  # Established Prime
-        "income": (90000, 200000),
-        "credit_score": (740, 850),
-        "employment_years": (7, 30),
-        "debt_to_income": (0.05, 0.20),
-        "loan_history_count": (3, 10),
-        "age": (35, 65),
-        "home_ownership": 0.85,
-        "verified_income": 0.92,
-    },
-    3: {  # Subprime High-Risk
-        "income": (18000, 45000),
-        "credit_score": (300, 600),
-        "employment_years": (0, 3),
-        "debt_to_income": (0.30, 0.60),
-        "loan_history_count": (0, 4),
-        "age": (18, 38),
-        "home_ownership": 0.1,
-        "verified_income": 0.35,
-    },
-}
 
+def generate_customer_data(n: int = 5000) -> pd.DataFrame:
+    """Generate synthetic customer data for underwriting segmentation."""
 
-def _draw(param_range, size):
-    low, high = param_range
-    return np.random.uniform(low, high, size)
+    segments = {
+        "Mass Market": 0,
+        "Rising Prime": 1,
+        "Established Prime": 2,
+        "Subprime High-Risk": 3,
+    }
 
+    data = []
+    for _ in range(n):
+        seg = np.random.choice(list(segments.keys()), p=[0.30, 0.25, 0.25, 0.20])
 
-def generate_customer_data(n=5000):
-    """Generate synthetic customer data with 4 distinct segments."""
-    # Balanced generation across segments
-    per_segment = n // 4
-    records = []
+        if seg == "Mass Market":
+            income = np.random.normal(55000, 12000)
+            credit_score = np.random.randint(620, 700)
+            employment_years = np.random.randint(2, 10)
+            debt_to_income = np.random.uniform(0.20, 0.38)
+            loan_history_count = np.random.randint(1, 4)
+            age = np.random.randint(25, 50)
+            home_ownership = np.random.choice(["rent", "own", "rent", "own"], p=[0.5, 0.3, 0.2, 0.0])
+            verified_income = np.random.choice([True, False], p=[0.65, 0.35])
 
-    for seg_id, params in SEGMENT_PARAMS.items():
-        for _ in range(per_segment):
-            income = _draw(params["income"], 1)[0]
-            credit_score = int(_draw(params["credit_score"], 1)[0])
-            employment_years = round(_draw(params["employment_years"], 1)[0], 2)
-            debt_to_income = round(_draw(params["debt_to_income"], 1)[0], 4)
-            loan_history_count = int(np.random.choice(
-                range(params["loan_history_count"][0], params["loan_history_count"][1] + 1)
-            ))
-            age = int(_draw(params["age"], 1)[0])
-            home_ownership = 1 if np.random.random() < params["home_ownership"] else 0
-            verified_income = 1 if np.random.random() < params["verified_income"] else 0
+        elif seg == "Rising Prime":
+            income = np.random.normal(75000, 18000)
+            credit_score = np.random.randint(680, 760)
+            employment_years = np.random.randint(1, 5)
+            debt_to_income = np.random.uniform(0.15, 0.30)
+            loan_history_count = np.random.randint(0, 3)
+            age = np.random.randint(23, 38)
+            home_ownership = np.random.choice(["rent", "rent", "own"], p=[0.6, 0.25, 0.15])
+            verified_income = np.random.choice([True, False], p=[0.80, 0.20])
 
-            records.append({
-                "income": income,
-                "credit_score": credit_score,
-                "employment_years": employment_years,
-                "debt_to_income": debt_to_income,
-                "loan_history_count": loan_history_count,
-                "age": age,
-                "home_ownership": home_ownership,
-                "verified_income": verified_income,
-                "_true_segment": seg_id,
-            })
+        elif seg == "Established Prime":
+            income = np.random.normal(130000, 35000)
+            credit_score = np.random.randint(740, 850)
+            employment_years = np.random.randint(8, 30)
+            debt_to_income = np.random.uniform(0.08, 0.22)
+            loan_history_count = np.random.randint(2, 7)
+            age = np.random.randint(35, 60)
+            home_ownership = np.random.choice(["own", "own", "mortgage"], p=[0.50, 0.30, 0.20])
+            verified_income = np.random.choice([True], p=[1.0])
 
-    df = pd.DataFrame(records).sample(frac=1, random_state=42).reset_index(drop=True)
+        else:  # Subprime High-Risk
+            income = np.random.normal(28000, 9000)
+            credit_score = np.random.randint(500, 640)
+            employment_years = np.random.randint(0, 4)
+            debt_to_income = np.random.uniform(0.35, 0.60)
+            loan_history_count = np.random.randint(3, 9)
+            age = np.random.randint(20, 45)
+            home_ownership = np.random.choice(["rent", "rent", "own"], p=[0.75, 0.20, 0.05])
+            verified_income = np.random.choice([True, False], p=[0.40, 0.60])
 
-    # Add label column (will be overwritten by KMeans in practice)
-    df["segment_label"] = df["_true_segment"]
+        data.append({
+            "income": max(15000, income),
+            "credit_score": min(max(300, credit_score), 850),
+            "employment_years": max(0, employment_years),
+            "debt_to_income": min(max(0.0, debt_to_income), 0.95),
+            "loan_history_count": max(0, loan_history_count),
+            "age": min(max(18, age), 80),
+            "home_ownership": home_ownership,
+            "verified_income": verified_income,
+            "true_segment": segments[seg],
+        })
+
+    df = pd.DataFrame(data)
+
+    home_map = {"rent": 0, "own": 1, "mortgage": 2}
+    df["home_ownership"] = df["home_ownership"].map(home_map)
+    df["verified_income"] = df["verified_income"].astype(int)
 
     return df
-
-
-def get_feature_columns():
-    return [
-        "income",
-        "credit_score",
-        "employment_years",
-        "debt_to_income",
-        "loan_history_count",
-        "age",
-        "home_ownership",
-        "verified_income",
-    ]
-
-
-def scale_features(df, feature_cols=None, scaler=None):
-    if feature_cols is None:
-        feature_cols = get_feature_columns()
-    X = df[feature_cols].values
-    if scaler is None:
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
-    else:
-        X_scaled = scaler.transform(X)
-    return X_scaled, scaler
 
 
 if __name__ == "__main__":
     df = generate_customer_data(5000)
     print(df.head())
-    print(f"\nShape: {df.shape}")
-    print(f"\nSegment distribution:\n{df['_true_segment'].value_counts().sort_index()}")
+    print(df.describe())
+    print(df["true_segment"].value_counts().sort_index())

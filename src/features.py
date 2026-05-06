@@ -1,66 +1,66 @@
-"""Feature engineering for customer segmentation."""
-
-import numpy as np
 import pandas as pd
+import numpy as np
 
 
-def compute_rfm_features(df):
-    """RFM-style features derived from income and loan history."""
-    return pd.DataFrame({
-        "income_per_employment_year": df["income"] / (df["employment_years"] + 0.5),
-        "loan_density": df["loan_history_count"] / (df["age"] - 17 + 1),  # loans per eligible year
-        "income_stability_ratio": df["income"] / (df["employment_years"] * 1000 + 1),
-    })
+def build_rfm_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Recency, Frequency, Monetary proxies using available columns."""
+    feat = pd.DataFrame(index=df.index)
+
+    feat["income_per_loan"] = df["income"] / (df["loan_history_count"] + 1)
+    feat["loan_density"] = df["loan_history_count"] / (df["age"] - 17 + 1)
+    feat["income_to_age"] = df["income"] / (df["age"] + 1)
+
+    return feat
 
 
-def compute_behavioral_features(df):
-    """Behavioral signals from debt and credit."""
-    return pd.DataFrame({
-        "dti_credit_product": df["debt_to_income"] * df["loan_history_count"],
-        "credit_per_age": df["credit_score"] / df["age"],
-        "verified_income_weight": df["verified_income"] * np.log1p(df["income"]),
-        "ownership_income": df["home_ownership"] * np.log1p(df["income"]),
-    })
+def build_behavioral_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Behavioural signals from credit and loan history."""
+    feat = pd.DataFrame(index=df.index)
+
+    feat["credit_utilization_proxy"] = (df["debt_to_income"] * df["income"]) / (df["credit_score"] + 1)
+    feat["has_loan_history"] = (df["loan_history_count"] > 0).astype(int)
+    feat["high_loan_burden"] = (df["debt_to_income"] > 0.35).astype(int)
+    feat["stable_income_flag"] = (df["verified_income"] == 1).astype(int)
+
+    return feat
 
 
-def compute_stability_features(df):
-    """Employment and residence stability indicators."""
-    return pd.DataFrame({
-        "employment_stability": df["employment_years"] / (df["age"] - 17 + 1),
-        "tenure_income_interaction": df["employment_years"] * np.log1p(df["income"]),
-        "verified_tenure": df["verified_income"] * df["employment_years"],
-        "age_employment_gap": df["age"] - df["employment_years"] - 16,
-    })
+def build_stability_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Employment and residential stability indicators."""
+    feat = pd.DataFrame(index=df.index)
+
+    feat["employment_stability"] = df["employment_years"] / (df["age"] - 17 + 1)
+    feat["is_homeowner"] = (df["home_ownership"] >= 1).astype(int)
+    feat["young_high_earner"] = ((df["age"] < 30) & (df["income"] > 70000)).astype(int)
+    feat["senior_estabilished"] = ((df["age"] > 50) & (df["employment_years"] > 10)).astype(int)
+
+    return feat
 
 
-def build_feature_matrix(df, feature_cols):
-    """Build full feature matrix including engineered features."""
-    base = df[feature_cols].copy()
+def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Combine all feature groups into a single feature DataFrame."""
+    features = pd.concat(
+        [
+            build_rfm_features(df),
+            build_behavioral_features(df),
+            build_stability_features(df),
+        ],
+        axis=1,
+    )
+    return features
 
-    rfm = compute_rfm_features(df)
-    behavioral = compute_behavioral_features(df)
-    stability = compute_stability_features(df)
 
-    X = pd.concat([base, rfm, behavioral, stability], axis=1)
-    return X
-
-
-def get_all_feature_names():
-    base = [
-        "income", "credit_score", "employment_years", "debt_to_income",
-        "loan_history_count", "age", "home_ownership", "verified_income",
+def get_feature_names() -> list:
+    return [
+        "income_per_loan",
+        "loan_density",
+        "income_to_age",
+        "credit_utilization_proxy",
+        "has_loan_history",
+        "high_loan_burden",
+        "stable_income_flag",
+        "employment_stability",
+        "is_homeowner",
+        "young_high_earner",
+        "senior_estabilished",
     ]
-    engineered = [
-        "income_per_employment_year", "loan_density", "income_stability_ratio",
-        "dti_credit_product", "credit_per_age", "verified_income_weight", "ownership_income",
-        "employment_stability", "tenure_income_interaction", "verified_tenure", "age_employment_gap",
-    ]
-    return base + engineered
-
-
-if __name__ == "__main__":
-    from data_loader import generate_customer_data, get_feature_columns
-    df = generate_customer_data(5000)
-    X = build_feature_matrix(df, get_feature_columns())
-    print(f"Feature matrix shape: {X.shape}")
-    print(X.describe())
