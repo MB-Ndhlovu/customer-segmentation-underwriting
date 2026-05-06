@@ -1,40 +1,38 @@
 # Customer Segmentation for Underwriting
 
+Machine learning pipeline for customer segmentation using KMeans clustering and supervised classification for credit risk underwriting.
+
 ## Overview
-This project applies unsupervised learning (K-Means clustering) to segment loan applicants into 4 actionable risk tiers, then trains a supervised classifier to predict segment membership from application features alone.
 
-**Segments:**
-- `0 — Mass Market`: Moderate income, decent credit, average stability
-- `1 — Rising Prime`: Growing income, improving credit, short employment but upward trajectory
-- `2 — Established Prime`: High income, excellent credit, long tenure, low risk
-- `3 — Subprime High-Risk`: Low income, poor credit, high DTI, unstable employment
+This project builds a 4-segment customer classification system for lenders:
+- **Mass Market** — Low-risk, standard products
+- **Rising Prime** — Growing credit profiles, good trajectory
+- **Established Prime** — Stable, high-credit-quality borrowers
+- **Subprime High-Risk** — Elevated risk, requires additional due diligence
 
-## Tech Stack
-- Python 3.12
-- pandas, numpy
-- scikit-learn (KMeans, RandomForest, preprocessing, metrics)
-- faker (synthetic data generation)
+## Architecture
 
-## Files
 ```
-src/
-  data_loader.py   — Generate 5000-row synthetic dataset
-  features.py      — RFM, behavioral, stability feature engineering
-  segment.py       — KMeans clustering, silhouette/elbow analysis, profiling
-  classify.py      — RandomForestClassifier trained on cluster labels
-run_pipeline.py   — End-to-end pipeline orchestration
-reports/
-  segmentation_results.json — Profile summaries + model metrics
+data_loader.py  →  features.py  →  segment.py  →  classify.py
+    ↓                  ↓               ↓              ↓
+ 5000 rows       RFM features    KMeans clustering  RandomForest
+ synthetic data  stability       silhouette eval    classifier
+                  behavioral      elbow method       segment prediction
 ```
+
+## Pipeline
+
+1. **Data Generation**: Synthetic dataset of 5000 customers with realistic distributions
+2. **Feature Engineering**: RFM, behavioral, and stability features
+3. **Clustering**: KMeans with silhouette analysis and elbow method validation
+4. **Classification**: RandomForest trained on cluster labels for production prediction
+
+## Results
+
+Run `python run_pipeline.py` to execute the full pipeline and generate `reports/segmentation_results.json`.
 
 ## Business Impact
-- **Mass Market**: Standard products, moderate rates
-- **Rising Prime**: Growth-tier lending, pre-approved upgrades
-- **Established Prime**: Premium products, lowest rates
-- **Subprime High-Risk**: Require co-signers, higher rates, or decline
 
-## Usage
-```bash
-pip install -r requirements.txt
-python run_pipeline.py
-```
+- Faster applicant segment classification
+- Consistent risk-tier assignment across underwriting teams
+- Explainable segment predictions via RandomForest feature importance

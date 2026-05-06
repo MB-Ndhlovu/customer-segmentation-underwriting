@@ -1,64 +1,39 @@
-import numpy as np
-import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import silhouette_score, silhouette_samples
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+from sklearn.metrics import silhouette_score
+import numpy as np
+import pandas as pd
 
-
-def find_optimal_k(X_scaled: np.ndarray, k_range: range, random_state: int = 42) -> dict:
-    """Elbow method + silhouette analysis to pick best k."""
-    inertias, silhouettes = [], []
-
+def find_optimal_k(X_scaled, k_range=range(2, 9)):
+    elbow = []
+    silhouettes = []
     for k in k_range:
-        km = KMeans(n_clusters=k, random_state=random_state, n_init=10)
+        km = KMeans(n_clusters=k, random_state=42, n_init=10)
         labels = km.fit_predict(X_scaled)
-        inertias.append(km.inertia_)
+        elbow.append(km.inertia_)
         silhouettes.append(silhouette_score(X_scaled, labels))
+    best_k = list(k_range)[np.argmax(silhouettes)]
+    return best_k, silhouettes, elbow
 
-    best_k = k_range[np.argmax(silhouettes)]
-    return {"best_k": best_k, "inertias": inertias, "silhouettes": silhouettes, "k_values": list(k_range)}
-
-
-def fit_kmeans(X_scaled: np.ndarray, n_clusters: int, random_state: int = 42):
-    km = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
+def fit_kmeans(X_scaled, n_clusters=4):
+    km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
     labels = km.fit_predict(X_scaled)
     return km, labels
 
-
-def profile_segments(df: pd.DataFrame, labels: np.ndarray, feature_names: list) -> dict:
-    """Profile each cluster with feature means and assign business labels."""
-    df_labeled = df.copy()
-    df_labeled["cluster"] = labels
-
-    segment_names = {
-        0: "Mass Market",
-        1: "Rising Prime",
-        2: "Established Prime",
-        3: "Subprime High-Risk",
-    }
-
-    # Compute cluster centroids in original feature space
-    centroids = df_labeled.groupby("cluster")[feature_names].mean()
-
-    profiles = {}
-    for cluster_id in sorted(df_labeled["cluster"].unique()):
-        mask = labels == cluster_id
-        profiles[int(cluster_id)] = {
-            "name": segment_names.get(cluster_id, f"Segment {cluster_id}"),
-            "count": int(mask.sum()),
-            "pct": round(mask.sum() / len(labels) * 100, 2),
-            "centroid_features": {f: round(float(centroids.loc[cluster_id, f]), 4) for f in feature_names},
-        }
-
+def profile_segments(df, labels):
+    df_out = df.copy()
+    df_out["cluster"] = labels
+    profiles = df_out.groupby("cluster").mean(numeric_only=True)
     return profiles
 
-
-def compute_silhouette_details(X_scaled: np.ndarray, labels: np.ndarray) -> dict:
-    """Per-sample silhouette with overall average."""
-    sil_avg = silhouette_score(X_scaled, labels)
-    sil_vals = silhouette_samples(X_scaled, labels)
-
-    return {"silhouette_avg": round(sil_avg, 4), "per_sample": [round(float(v), 4) for v in sil_vals]}
+if __name__ == "__main__":
+    from data_loader import generate_synthetic_data
+    from features import compute_features
+    df = generate_synthetic_data()
+    X = compute_features(df)
+    scaler = StandardScaler()
+    Xs = scaler.fit_transform(X)
+    best_k, sils, elbows = find_optimal_k(Xs)
+    print(f"Best k={best_k}, silhouettes={sils}")
+    km, lbls = fit_kmeans(Xs, 4)
+    print("Cluster distribution:", np.bincount(lbls))

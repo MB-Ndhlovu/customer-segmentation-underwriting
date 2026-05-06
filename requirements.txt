@@ -1,4 +1,4 @@
-faker
-scikit-learn
-pandas
 numpy
+pandas
+scikit-learn
+joblib

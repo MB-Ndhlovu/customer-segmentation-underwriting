@@ -1,96 +1,88 @@
-#!/usr/bin/env python3
-"""End-to-end Customer Segmentation Pipeline for Underwriting."""
-
-import pandas as pd
+import os
+import json
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 
-from src.data_loader import generate_customer_data
-from src.features import engineer_features, get_feature_names
-from src.segment import find_optimal_k, fit_kmeans, profile_segments, compute_silhouette_details
-from src.classify import train_segment_classifier, save_artifacts
+from src.data_loader import generate_synthetic_data
+from src.features import compute_features
+from src.segment import find_optimal_k, fit_kmeans, profile_segments
+from src.classify import train_classifier
 
+SEGMENT_NAMES = {0: "Mass Market", 1: "Rising Prime", 2: "Established Prime", 3: "Subprime High-Risk"}
 
-def main():
+def run_pipeline():
     print("=" * 60)
-    print("CUSTOMER SEGMENTATION FOR UNDERWRITING — Pipeline")
-    print("=" * 60)
-
-    # 1. Load data
-    print("\n[1] Generating synthetic customer data (5000 rows)...")
-    df = generate_customer_data(5000)
-    print(f"    Shape: {df.shape}")
-    print(f"    True segment distribution:\n{df['true_segment'].value_counts().sort_index().to_string()}")
-
-    # 2. Feature engineering
-    print("\n[2] Engineering features (RFM + behavioral + stability)...")
-    features = engineer_features(df)
-    feature_names = get_feature_names()
-    print(f"    Features ({len(feature_names)}): {feature_names}")
-
-    # Scale for clustering
-    scaler_seg = StandardScaler()
-    X_scaled = scaler_seg.fit_transform(features[feature_names])
-
-    # 3. Find optimal k (2–8 range)
-    print("\n[3] Running Elbow + Silhouette analysis (k=2..8)...")
-    k_results = find_optimal_k(X_scaled, range(2, 9))
-    print(f"    Optimal k = {k_results['best_k']}  (best silhouette)")
-    print(f"    Silhouette scores: {dict(zip(k_results['k_values'], [round(s,4) for s in k_results['silhouettes']]))}")
-
-    # 4. Fit KMeans with k=4
-    n_clusters = 4
-    print(f"\n[4] Fitting KMeans (k={n_clusters})...")
-    km, labels = fit_kmeans(X_scaled, n_clusters=n_clusters)
-    sil_details = compute_silhouette_details(X_scaled, labels)
-    print(f"    Silhouette average: {sil_details['silhouette_avg']}")
-    print(f"    Inertia: {km.inertia_:.2f}")
-    print(f"    Cluster distribution:")
-    unique, counts = np.unique(labels, return_counts=True)
-    for u, c in zip(unique, counts):
-        print(f"      Cluster {u}: {c} ({c/len(labels)*100:.1f}%)")
-
-    # 5. Profile segments
-    print("\n[5] Profiling segments...")
-    profiles = profile_segments(features, labels, feature_names)
-    for cid, prof in profiles.items():
-        print(f"    [{cid}] {prof['name']} — n={prof['count']} ({prof['pct']}%)")
-        print(f"        Top centroid features:")
-        sorted_feats = sorted(prof["centroid_features"].items(), key=lambda x: abs(x[1]), reverse=True)[:3]
-        for f, v in sorted_feats:
-            print(f"          {f}: {v}")
-
-    # 6. Train supervised classifier
-    print("\n[6] Training RandomForest classifier on cluster labels...")
-    base_features = ["income", "credit_score", "employment_years", "debt_to_income",
-                     "loan_history_count", "age", "home_ownership", "verified_income"]
-    clf, clf_scaler, clf_metrics = train_segment_classifier(
-        df, pd.Series(labels), base_features
-    )
-    print(f"    Accuracy: {clf_metrics['accuracy']}")
-    print(f"    F1 (weighted): {clf_metrics['f1_weighted']}")
-    print("    Feature importances:")
-    sorted_fi = sorted(clf_metrics["feature_importances"].items(), key=lambda x: x[1], reverse=True)
-    for f, v in sorted_fi:
-        print(f"      {f}: {v}")
-
-    # 7. Save artifacts
-    output_path = "reports/segmentation_results.json"
-    save_artifacts(clf, clf_scaler, clf_metrics, profiles, output_path)
-    print(f"\n[7] Artifacts saved to {output_path}")
-
-    print("\n" + "=" * 60)
-    print("PIPELINE COMPLETE")
+    print("CUSTOMER SEGMENTATION PIPELINE")
     print("=" * 60)
 
-    return {
-        "profiles": profiles,
-        "clf_metrics": clf_metrics,
-        "silhouette_avg": sil_details["silhouette_avg"],
-        "optimal_k": k_results["best_k"],
-        "n_clusters": n_clusters,
+    print("\n[1/5] Generating synthetic data...")
+    df = generate_synthetic_data(n=5000)
+    print(f"  → {len(df)} rows, columns: {list(df.columns)}")
+
+    print("\n[2/5] Computing features...")
+    X = compute_features(df)
+    print(f"  → {X.shape[1]} features: {list(X.columns)}")
+
+    print("\n[3/5] Scaling features...")
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    print(f"  → Scaled mean={X_scaled.mean():.4f}, std={X_scaled.std():.4f}")
+
+    print("\n[4/5] KMeans clustering...")
+    best_k, silhouettes, elbows = find_optimal_k(X_scaled)
+    print(f"  → Optimal k={best_k} (silhouette scores: {[round(s,3) for s in silhouettes]})")
+    km, labels = fit_kmeans(X_scaled, n_clusters=4)
+    print(f"  → Inertia: {km.inertia_:.2f}")
+    print(f"  → Cluster sizes: {dict(enumerate(np.bincount(labels)))}")
+
+    print("\n[5/5] Training RandomForest classifier...")
+    clf, acc, report = train_classifier(X, labels)
+    print(f"  → Test accuracy: {acc:.4f}")
+
+    profiles = profile_segments(df, labels)
+    feature_importance = dict(zip(X.columns, clf.feature_importances_.round(4)))
+
+    seg_map = {i: SEGMENT_NAMES[i] for i in range(4)}
+    cluster_cardinality = {int(k): int(v) for k, v in zip(*np.unique(labels, return_counts=True))}
+
+    results = {
+        "best_k": int(best_k),
+        "silhouette_scores": {str(k): round(v, 4) for k, v in zip(range(2, 2+len(silhouettes)), silhouettes)},
+        "inertia": round(float(km.inertia_), 4),
+        "cluster_cardinality": cluster_cardinality,
+        "segment_profiles": profiles.to_dict(),
+        "classifier_accuracy": round(acc, 4),
+        "classification_report": report,
+        "feature_importance": feature_importance,
     }
 
+    os.makedirs("reports", exist_ok=True)
+    with open("reports/segmentation_results.json", "w") as f:
+        json.dump(results, f, indent=2, default=str)
+    print("\n[✓] Results saved to reports/segmentation_results.json")
+
+    print("\n" + "=" * 60)
+    print("SEGMENT SUMMARY")
+    print("=" * 60)
+    for cluster_id in sorted(cluster_cardinality):
+        pct = cluster_cardinality[cluster_id] / len(labels) * 100
+        seg_name = SEGMENT_NAMES.get(cluster_id, f"Cluster {cluster_id}")
+        income = profiles.loc[cluster_id, "income"]
+        credit = profiles.loc[cluster_id, "credit_score"]
+        dti = profiles.loc[cluster_id, "debt_to_income"]
+        print(f"  Cluster {cluster_id} ({seg_name}): {cluster_cardinality[cluster_id]} ({pct:.1f}%) | "
+              f"Avg income=${income:,.0f} | credit={credit:.0f} | DTI={dti:.3f}")
+
+    print("\n" + "=" * 60)
+    print("TOP FEATURE IMPORTANCES (RandomForest)")
+    print("=" * 60)
+    sorted_fi = sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
+    for feat, imp in sorted_fi[:6]:
+        bar = "█" * int(imp * 40)
+        print(f"  {feat:<25} {imp:.4f} {bar}")
+
+    print("\n[✓] Pipeline complete.")
+    return results
 
 if __name__ == "__main__":
-    results = main()
+    results = run_pipeline()
