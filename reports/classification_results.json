@@ -1,0 +1,44 @@
+{
+  "accuracy": 0.968,
+  "classification_report": {
+    "Mass Market": {
+      "precision": 0.9745454545454545,
+      "recall": 0.9640287769784173,
+      "f1-score": 0.969258589511754,
+      "support": 278.0
+    },
+    "Rising Prime": {
+      "precision": 0.9716981132075472,
+      "recall": 0.958139534883721,
+      "f1-score": 0.9648711943793911,
+      "support": 215.0
+    },
+    "Established Prime": {
+      "precision": 0.957983193277311,
+      "recall": 0.9702127659574468,
+      "f1-score": 0.9640591966173362,
+      "support": 235.0
+    },
+    "Subprime High-Risk": {
+      "precision": 0.9672727272727273,
+      "recall": 0.9779411764705882,
+      "f1-score": 0.9725776965265083,
+      "support": 272.0
+    },
+    "accuracy": 0.968,
+    "macro avg": {
+      "precision": 0.96787487207576,
+      "recall": 0.9675805635725433,
+      "f1-score": 0.9676916692587474,
+      "support": 1000.0
+    },
+    "weighted avg": {
+      "precision": 0.968062962941609,
+      "recall": 0.968,
+      "f1-score": 0.9679962393361209,
+      "support": 1000.0
+    }
+  },
+  "n_train": 4000,
+  "n_test": 1000
+}

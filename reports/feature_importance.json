@@ -1,0 +1,10 @@
+{
+  "home_ownership": 0.2565,
+  "employment_years": 0.1758,
+  "credit_score": 0.1685,
+  "income": 0.1661,
+  "loan_history_count": 0.0945,
+  "debt_to_income": 0.0915,
+  "age": 0.0408,
+  "verified_income": 0.0063
+}
