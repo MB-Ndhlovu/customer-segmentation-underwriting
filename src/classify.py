@@ -1,39 +1,34 @@
-"""Supervised classification of cluster segments via RandomForest."""
-
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import cross_val_score, StratifiedKFold
-from sklearn.preprocessing import StandardScaler
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, accuracy_score
 
+def train_classifier(X, labels, test_size=0.2, random_state=42):
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, labels, test_size=test_size, random_state=random_state, stratify=labels
+    )
+    clf = RandomForestClassifier(n_estimators=100, random_state=random_state, n_jobs=-1)
+    clf.fit(X_train, y_train)
+    y_pred = clf.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
+    report = classification_report(y_test, y_pred, output_dict=True)
+    return clf, acc, report, X_test, y_test, y_pred
 
-def train_classifier(X: pd.DataFrame, y: np.ndarray) -> RandomForestClassifier:
-    """Train RandomForest on cluster labels; return fitted model."""
+def predict_segment(clf, X):
+    return clf.predict(X)
+
+if __name__ == '__main__':
+    from data_loader import generate_customer_data
+    from features import compute_features
+    from segment import cluster
+    from sklearn.preprocessing import StandardScaler
+
+    df = generate_customer_data()
+    X = compute_features(df)
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-
-    clf = RandomForestClassifier(
-        n_estimators=200,
-        max_depth=10,
-        min_samples_leaf=5,
-        random_state=42,
-        n_jobs=-1,
-    )
-    clf.fit(X_scaled, y)
-
-    cv_scores = cross_val_score(
-        clf, X_scaled, y,
-        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=42),
-        scoring="accuracy",
-    )
-
-    print(f"RandomForest CV Accuracy: {cv_scores.mean():.4f} (+/- {cv_scores.std()*2:.4f})")
-    print(f"Per-fold scores: {[round(s, 4) for s in cv_scores]}")
-
-    return clf, scaler
-
-
-def predict_segment(clf: RandomForestClassifier, scaler: StandardScaler, X: pd.DataFrame) -> np.ndarray:
-    """Predict cluster labels for new application data."""
-    X_scaled = scaler.transform(X)
-    return clf.predict(X_scaled)
+    labels, _, _ = cluster(X_scaled, n_clusters=4)
+    clf, acc, report, _, _, _ = train_classifier(X_scaled, labels)
+    print(f"Classifier accuracy: {acc:.4f}")
+    print(classification_report(labels, clf.predict(X_scaled), output_dict=True))

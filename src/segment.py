@@ -1,70 +1,46 @@
-"""Unsupervised segmentation via KMeans — Elbow + Silhouette analysis."""
-
-import json
-from typing import Tuple
-
 import numpy as np
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import StandardScaler
 import pandas as pd
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import silhouette_score
 
-
-def find_optimal_k(X_scaled: np.ndarray, k_range: range = range(2, 10)) -> Tuple[int, dict]:
-    """Evaluate K across range; return optimal k and metrics dict."""
-    inertias, silhouettes = [], []
-
+def find_optimal_k(X_scaled, k_range=range(2, 9)):
+    elbow = []
+    silhouettes = []
     for k in k_range:
         km = KMeans(n_clusters=k, random_state=42, n_init=10)
         labels = km.fit_predict(X_scaled)
-        inertias.append(km.inertia_)
+        elbow.append(km.inertia_)
         silhouettes.append(silhouette_score(X_scaled, labels))
+    return elbow, silhouettes
 
-    # Pick k with highest silhouette, but minimum 4 for business requirement
-    optimal_k = max(k_range, key=lambda k: silhouettes[k - k_range.start])
-    optimal_k = max(optimal_k, 4)  # enforce minimum 4
-
-    metrics = {
-        "k_values": list(k_range),
-        "inertias": [float(i) for i in inertias],
-        "silhouettes": [float(s) for s in silhouettes],
-        "optimal_k": optimal_k,
-    }
-    return optimal_k, metrics
-
-
-def cluster(X_scaled: np.ndarray, n_clusters: int = 4) -> np.ndarray:
-    """Fit KMeans and return cluster labels."""
+def cluster(X_scaled, n_clusters=4):
     km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    return km.fit_predict(X_scaled)
+    labels = km.fit_predict(X_scaled)
+    centroids = km.cluster_centers_
+    sil = silhouette_score(X_scaled, labels)
+    return labels, centroids, sil
 
-
-def profile_segments(X: pd.DataFrame, labels: np.ndarray, df: pd.DataFrame) -> pd.DataFrame:
-    """Compute mean feature values per cluster label."""
-    X = X.copy()
-    X["cluster"] = labels
-    # Add raw cols for profiling
-    for col in ["income", "credit_score", "employment_years",
-                "debt_to_income", "loan_history_count", "age",
-                "home_ownership", "verified_income"]:
-        X[col] = df[col].values
-
-    profiles = X.groupby("cluster").mean(numeric_only=True).round(3)
+def profile_segments(df, labels, feature_cols):
+    df = df.copy()
+    df['segment_label'] = labels
+    profiles = df.groupby('segment_label')[feature_cols].mean()
     return profiles
 
+if __name__ == '__main__':
+    from data_loader import generate_customer_data
+    from features import compute_features
+    from sklearn.preprocessing import StandardScaler
 
-def save_results(profiles: pd.DataFrame, metrics: dict, path: str):
-    result = {
-        "optimal_k": metrics["optimal_k"],
-        "silhouettes_by_k": dict(zip(metrics["k_values"], metrics["silhouettes"])),
-        "cluster_profiles": profiles.to_dict(orient="index"),
-        "business_segment_mapping": {
-            "0": "Mass Market",
-            "1": "Rising Prime",
-            "2": "Established Prime",
-            "3": "Subprime High-Risk",
-        },
-    }
-    with open(path, "w") as f:
-        json.dump(result, f, indent=2)
-    print(f"Results saved to {path}")
+    df = generate_customer_data()
+    X = compute_features(df)
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    elbow, silhouettes = find_optimal_k(X_scaled)
+    print("Silhouette scores by k:", dict(zip(range(2, 9), silhouettes)))
+
+    labels, centroids, sil = cluster(X_scaled, n_clusters=4)
+    print(f"\nSilhouette score (k=4): {sil:.4f}")
+    print("\nSegment profiles:")
+    print(profile_segments(X, labels, X.columns.tolist()))
