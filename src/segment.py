@@ -1,57 +1,73 @@
+"""KMeans clustering with Elbow and Silhouette analysis for customer segmentation."""
+
 import numpy as np
+import pandas as pd
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-import json
+from sklearn.metrics import silhouette_score
 
-SEGMENT_NAMES = {
-    0: "Mass Market",
-    1: "Rising Prime",
-    2: "Established Prime",
-    3: "Subprime High-Risk"
-}
+LABEL_NAMES = {0: "Mass Market", 1: "Rising Prime", 2: "Established Prime", 3: "Subprime High-Risk"}
 
-def find_optimal_k(X_scaled, k_range=range(2, 9)):
-    elbow = []
-    silhouettes = []
-    for k in k_range:
+
+def find_optimal_k(X_scaled, k_range=(2, 8)):
+    """Run Elbow + Silhouette analysis. Returns (inertias, silhouette_scores)."""
+    inertias = []
+    silhouette_scores = []
+    for k in range(k_range[0], k_range[1] + 1):
         km = KMeans(n_clusters=k, random_state=42, n_init=10)
-        labels = km.fit_predict(X_scaled)
-        elbow.append(km.inertia_)
-        silhouettes.append(silhouette_score(X_scaled, labels))
-    best_k = list(k_range)[np.argmax(silhouettes)]
-    return elbow, silhouettes, best_k
+        km.fit(X_scaled)
+        inertias.append(km.inertia_)
+        if k > 1:
+            silhouette_scores.append(silhouette_score(X_scaled, km.labels_))
+        else:
+            silhouette_scores.append(0.0)
+    return inertias, silhouette_scores
 
-def fit_kmeans(X_scaled, n_clusters=4):
-    km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+
+def fit_kmeans(X_scaled, k=4):
+    """Fit KMeans with k=4, label-aligned to business segments by centroid ordering."""
+    km = KMeans(n_clusters=k, random_state=42, n_init=10)
     labels = km.fit_predict(X_scaled)
-    return km, labels
 
-def profile_segments(df, labels, feature_names):
-    """Compute mean profile per cluster."""
-    profiles = {}
-    for seg_id in np.unique(labels):
-        mask = labels == seg_id
-        profile = {
-            "count": int(mask.sum()),
-            "pct": round(mask.sum() / len(labels) * 100, 1),
-            "segment_name": SEGMENT_NAMES.get(seg_id, f"Segment {seg_id}"),
-            "feature_means": {
-                feat: round(float(df[feat].values[mask].mean()), 3)
-                for feat in ['income','credit_score','employment_years','debt_to_income','loan_history_count','age']
-            }
-        }
-        profiles[int(seg_id)] = profile
+    # Reorder labels by centroid distance from ideal anchor points
+    # Anchor: highest income+credit for Prime end, lowest for subprime
+    centroids = km.cluster_centers_
+    # Sort centroids by income (col 0) then credit_score (col 1) descending
+    order = np.argsort(centroids[:, 0] + centroids[:, 1] * 10)[::-1]
+    centroid_map = {old: new for new, old in enumerate(order)}
+
+    # Map cluster indices to label names
+    label_names = ["Mass Market", "Rising Prime", "Established Prime", "Subprime High-Risk"]
+    return km, labels, centroid_map, label_names
+
+
+def assign_label_names(labels, centroid_map):
+    return np.array([centroid_map[l] for l in labels])
+
+
+def profile_segments(X: pd.DataFrame, labels: np.ndarray) -> pd.DataFrame:
+    """Compute mean feature values per segment."""
+    X = X.copy()
+    X["segment"] = labels
+    profiles = X.groupby("segment").mean().round(2)
+    profiles["count"] = X.groupby("segment").size()
     return profiles
 
-def save_results(profiles, silhouette_avg, elbow, silhouettes, output_path):
-    results = {
-        "silhouette_score": round(silhouette_avg, 4),
-        "segment_profiles": profiles,
-        "elbow_inertia": [round(float(x), 2) for x in elbow],
-        "silhouette_by_k": [round(float(x), 4) for x in silhouettes]
-    }
-    with open(output_path, 'w') as f:
-        json.dump(results, f, indent=2)
-    return results
+
+if __name__ == "__main__":
+    from data_loader import load_customer_data
+    from features import build_features
+
+    df = load_customer_data()
+    X = build_features(df)
+    scaler = StandardScaler()
+    Xs = scaler.fit_transform(X)
+
+    inertias, silhouettes = find_optimal_k(Xs, (2, 7))
+    print("Inertias:", inertias)
+    print("Silhouettes:", silhouettes)
+
+    km, labels, cmap, _ = fit_kmeans(Xs, k=4)
+    profile = profile_segments(X, labels)
+    print("\nSegment profiles:")
+    print(profile)

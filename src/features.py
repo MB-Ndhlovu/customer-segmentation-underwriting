@@ -1,56 +1,67 @@
+"""Feature engineering for customer segmentation."""
+
+import pandas as pd
 import numpy as np
 
-def compute_rfm_features(df):
-    """Recency, Frequency, Monetary proxies from static features."""
-    recency_proxy = (df['age'].max() - df['age']) / 50  # older = lower recency score
-    frequency_proxy = df['loan_history_count'] / df['loan_history_count'].max()
-    monetary_proxy = df['income'] / df['income'].max()
-    return recency_proxy, frequency_proxy, monetary_proxy
 
-def compute_behavioral_features(df):
-    """Behavioral signals from existing columns."""
-    credit_utilization = (850 - df['credit_score']) / 350  # higher when score is lower
-    loan_density = df['loan_history_count'] / (df['age'] - 18 + 1)  # loans per eligible year
-    employment_stability = df['employment_years'] / (df['age'] - 18 + 1)  # tenure ratio
-    return credit_utilization, loan_density, employment_stability
+def build_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add derived features to customer dataframe."""
+    X = df.copy()
 
-def compute_stability_features(df):
-    """Stability signals."""
-    income_stability = df['verified_income'] * (df['income'] / df['income'].mean())
-    home_ownership_bonus = df['home_ownership'] * 0.5
-    tenure_score = np.tanh(df['employment_years'] / 10)  # saturating score
-    return income_stability, home_ownership_bonus, tenure_score
+    # --- RFM-style features ---
+    # Recency proxy: younger customers in high-credit cohort -> higher recency
+    X["credit_age_ratio"] = X["credit_score"] / (X["age"] + 1)
 
-def build_feature_matrix(df):
-    recency, frequency, monetary = compute_rfm_features(df)
-    credit_util, loan_density, emp_stability = compute_behavioral_features(df)
-    income_stab, home_bonus, tenure = compute_stability_features(df)
+    # Frequency proxy: loan history count (already in dataset)
+    X["loan_frequency_score"] = X["loan_history_count"] / (X["age"] - 17 + 1)  # normalized by possible borrowing years
 
-    features = np.column_stack([
-        df['income'].values,
-        df['credit_score'].values,
-        df['employment_years'].values,
-        df['debt_to_income'].values,
-        df['loan_history_count'].values,
-        df['age'].values,
-        df['home_ownership'].values,
-        df['verified_income'].values,
-        recency.values,
-        frequency.values,
-        monetary.values,
-        credit_util.values,
-        loan_density.values,
-        emp_stability.values,
-        income_stab.values,
-        home_bonus.values,
-        tenure.values
-    ])
+    # Monetary proxy: income per employment year (income stability)
+    X["income_per_emp_year"] = X["income"] / (X["employment_years"] + 0.5)
 
-    feature_names = [
-        'income', 'credit_score', 'employment_years', 'debt_to_income',
-        'loan_history_count', 'age', 'home_ownership', 'verified_income',
-        'recency_proxy', 'frequency_proxy', 'monetary_proxy',
-        'credit_utilization', 'loan_density', 'employment_stability',
-        'income_stability', 'home_ownership_bonus', 'tenure_score'
+    # --- Behavioral features ---
+    # Debt burden index
+    X["debt_burden_index"] = X["debt_to_income"] * X["loan_history_count"]
+
+    # Credit utilization estimate (proxy via credit score buckets)
+    X["credit_utilization_proxy"] = (X["credit_score"] - 500) / 350  # 500-850 scale
+
+    # High DTI flag
+    X["high_dti_flag"] = (X["debt_to_income"] > 0.35).astype(int)
+
+    # Many loans flag
+    X["many_loans_flag"] = (X["loan_history_count"] > 3).astype(int)
+
+    # --- Stability features ---
+    # Employment stability score
+    X["employment_stability"] = X["employment_years"] / (X["age"] - 17 + 1)
+
+    # Income verification bonus
+    X["verified_income_bonus"] = X["verified_income"] * X["income"] / 50000
+
+    # Home ownership bonus (proxy for stability)
+    X["homeowner"] = X["home_ownership_status"]
+
+    # Young and high credit trajectory (Rising Prime signal)
+    X["young_prime_signal"] = ((X["age"] < 35) & (X["credit_score"] > 700)).astype(int)
+
+    # --- Final feature vector ---
+    feature_cols = [
+        "income", "credit_score", "employment_years", "debt_to_income",
+        "loan_history_count", "age", "home_ownership_status", "verified_income",
+        "credit_age_ratio", "loan_frequency_score", "income_per_emp_year",
+        "debt_burden_index", "credit_utilization_proxy", "high_dti_flag",
+        "many_loans_flag", "employment_stability", "verified_income_bonus",
+        "young_prime_signal",
     ]
-    return features, feature_names
+    return X[feature_cols]
+
+
+def get_feature_names():
+    return [
+        "income", "credit_score", "employment_years", "debt_to_income",
+        "loan_history_count", "age", "home_ownership_status", "verified_income",
+        "credit_age_ratio", "loan_frequency_score", "income_per_emp_year",
+        "debt_burden_index", "credit_utilization_proxy", "high_dti_flag",
+        "many_loans_flag", "employment_stability", "verified_income_bonus",
+        "young_prime_signal",
+    ]

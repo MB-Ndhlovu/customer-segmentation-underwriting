@@ -1,26 +1,50 @@
+"""Train RandomForestClassifier on cluster labels for real-time segment prediction."""
+
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, accuracy_score, f1_score
+from sklearn.metrics import classification_report, accuracy_score
 
-FEATURE_COLS = ['income', 'credit_score', 'employment_years', 'debt_to_income',
-                'loan_history_count', 'age', 'home_ownership', 'verified_income']
 
-def train_classifier(X, y):
+def train_classifier(X: pd.DataFrame, y: np.ndarray, test_size=0.2, random_state=42):
+    """Train and evaluate RandomForest on cluster labels."""
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
+        X, y, test_size=test_size, random_state=random_state, stratify=y
     )
-    clf = RandomForestClassifier(n_estimators=200, max_depth=10, random_state=42, n_jobs=-1)
+
+    clf = RandomForestClassifier(
+        n_estimators=200,
+        max_depth=10,
+        min_samples_leaf=5,
+        class_weight="balanced",
+        random_state=random_state,
+        n_jobs=-1,
+    )
     clf.fit(X_train, y_train)
+
     y_pred = clf.predict(X_test)
-
     acc = accuracy_score(y_test, y_pred)
-    f1 = f1_score(y_test, y_pred, average='weighted')
+    cv_scores = cross_val_score(clf, X, y, cv=5, scoring="accuracy")
 
-    report = classification_report(y_test, y_pred, target_names=[
-        "Mass Market", "Rising Prime", "Established Prime", "Subprime High-Risk"
-    ], output_dict=True)
+    return clf, {
+        "test_accuracy": round(acc, 4),
+        "cv_mean_accuracy": round(cv_scores.mean(), 4),
+        "cv_std": round(cv_scores.std(), 4),
+    }
 
-    return clf, acc, f1, report
 
-def get_feature_importance(clf):
-    return dict(zip(FEATURE_COLS, map(round, clf.feature_importances_, [4]*len(FEATURE_COLS))))
+def get_feature_importance(clf, feature_names):
+    """Return sorted feature importance dataframe."""
+    imp = pd.DataFrame({
+        "feature": feature_names,
+        "importance": clf.feature_importances_,
+    }).sort_values("importance", ascending=False)
+    return imp
+
+
+def predict_segment(clf, application_features: pd.DataFrame):
+    """Predict segment label for a new application."""
+    pred = clf.predict(application_features)
+    proba = clf.predict_proba(application_features)
+    return pred, proba
