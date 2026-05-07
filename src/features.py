@@ -1,62 +1,56 @@
-"""Feature engineering for customer segmentation."""
-
 import numpy as np
-import pandas as pd
-from sklearn.preprocessing import StandardScaler
 
+def compute_rfm_features(df):
+    """Recency, Frequency, Monetary proxies from static features."""
+    recency_proxy = (df['age'].max() - df['age']) / 50  # older = lower recency score
+    frequency_proxy = df['loan_history_count'] / df['loan_history_count'].max()
+    monetary_proxy = df['income'] / df['income'].max()
+    return recency_proxy, frequency_proxy, monetary_proxy
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Build feature set from raw customer data.
+def compute_behavioral_features(df):
+    """Behavioral signals from existing columns."""
+    credit_utilization = (850 - df['credit_score']) / 350  # higher when score is lower
+    loan_density = df['loan_history_count'] / (df['age'] - 18 + 1)  # loans per eligible year
+    employment_stability = df['employment_years'] / (df['age'] - 18 + 1)  # tenure ratio
+    return credit_utilization, loan_density, employment_stability
 
-    Returns DataFrame with:
-      - Original 8 features
-      - RFM features (income + credit score interaction)
-      - Behavioral features
-      - Stability features
-    """
+def compute_stability_features(df):
+    """Stability signals."""
+    income_stability = df['verified_income'] * (df['income'] / df['income'].mean())
+    home_ownership_bonus = df['home_ownership'] * 0.5
+    tenure_score = np.tanh(df['employment_years'] / 10)  # saturating score
+    return income_stability, home_ownership_bonus, tenure_score
 
-    X = df.copy()
+def build_feature_matrix(df):
+    recency, frequency, monetary = compute_rfm_features(df)
+    credit_util, loan_density, emp_stability = compute_behavioral_features(df)
+    income_stab, home_bonus, tenure = compute_stability_features(df)
 
-    # ── RFM features ────────────────────────────────────────────────────────────
-    X['income_credit_product'] = X['income'] * X['credit_score'] / 1e6
-    X['income_per_employment_year'] = X['income'] / (X['employment_years'] + 1)
-    X['credit_to_dti_ratio'] = X['credit_score'] / ((X['debt_to_income'] + 0.01) * 100)
+    features = np.column_stack([
+        df['income'].values,
+        df['credit_score'].values,
+        df['employment_years'].values,
+        df['debt_to_income'].values,
+        df['loan_history_count'].values,
+        df['age'].values,
+        df['home_ownership'].values,
+        df['verified_income'].values,
+        recency.values,
+        frequency.values,
+        monetary.values,
+        credit_util.values,
+        loan_density.values,
+        emp_stability.values,
+        income_stab.values,
+        home_bonus.values,
+        tenure.values
+    ])
 
-    # ── Behavioral features ───────────────────────────────────────────────────
-    X['loan_density'] = X['loan_history_count'] / (X['age'] - 17 + 1)  # loans per available year
-    X['income_stability_index'] = X['employment_years'] / (X['age'] - 17 + 1)
-    X['verified_income_flag'] = X['verified_income']
-
-    # ── Stability features ─────────────────────────────────────────────────────
-    X['home_ownership_flag'] = (X['home_ownership'] >= 1).astype(int)  # owns or mortgaged
-    X['income_to_age_ratio'] = X['income'] / (X['age'] + 1)
-    X['credit_per_age'] = X['credit_score'] / (X['age'] - 17 + 1)
-    X['high_dti_flag'] = (X['debt_to_income'] > 0.45).astype(int)
-    X['young_borrower_flag'] = (X['age'] < 25).astype(int)
-    X[' employment_years_bucket'] = np.clip(X['employment_years'] // 3, 0, 10).astype(int)
-
-    return X
-
-
-def get_feature_names() -> list:
-    """Return list of features used for clustering / classification."""
-    return [
+    feature_names = [
         'income', 'credit_score', 'employment_years', 'debt_to_income',
         'loan_history_count', 'age', 'home_ownership', 'verified_income',
-        'income_credit_product', 'income_per_employment_year',
-        'credit_to_dti_ratio', 'loan_density', 'income_stability_index',
-        'verified_income_flag', 'home_ownership_flag', 'income_to_age_ratio',
-        'credit_per_age', 'high_dti_flag', 'young_borrower_flag',
-        ' employment_years_bucket'
+        'recency_proxy', 'frequency_proxy', 'monetary_proxy',
+        'credit_utilization', 'loan_density', 'employment_stability',
+        'income_stability', 'home_ownership_bonus', 'tenure_score'
     ]
-
-
-def scale_features(df: pd.DataFrame) -> tuple:
-    """
-    Standard-scale features and return (scaled_df, scaler).
-    """
-    feature_names = get_feature_names()
-    scaler = StandardScaler()
-    scaled = scaler.fit_transform(df[feature_names])
-    return pd.DataFrame(scaled, columns=feature_names), scaler
+    return features, feature_names

@@ -1,30 +1,27 @@
 # Customer Segmentation for Underwriting
 
 ## Overview
-A machine learning pipeline that segments loan applicants into 4 risk categories using KMeans clustering, then trains a supervised classifier to predict segment membership from application features alone. This enables real-time underwriting decisions without running the full clustering pipeline.
+Unsupervised KMeans clustering + supervised RandomForest classification to segment loan applicants into 4 risk tiers for underwriting decisions.
 
 ## Segments
 | Label | Name | Profile |
 |-------|------|---------|
-| 0 | Mass Market | Low income, fair credit, short employment, high DTI, young |
-| 1 | Rising Prime | Moderate income, good credit, stable employment, moderate DTI |
-| 2 | Established Prime | High income, excellent credit, long tenure, low DTI |
-| 3 | Subprime High-Risk | Very low income, poor credit, unstable employment, very high DTI |
+| 0 | Mass Market | Low income, mid credit, short employment |
+| 1 | Rising Prime | Growing income, improving credit, stable employment |
+| 2 | Established Prime | High income, excellent credit, long tenure |
+| 3 | Subprime High-Risk | Low credit, high DTI, thin file |
 
 ## Pipeline
-1. **data_loader.py** — Generates 5000 synthetic customer records with realistic underwriting features
-2. **features.py** — Computes RFM, behavioral, and stability feature sets
-3. **segment.py** — KMeans clustering with Elbow + Silhouette analysis, profiles each segment
-4. **classify.py** — RandomForestClassifier trained on cluster labels; enables segment prediction at application time
-5. **run_pipeline.py** — Orchestrates full pipeline, prints summary, saves results
-
-## Results
-- **Silhouette Score**: ~0.42–0.52 (4 clusters, moderate separation)
-- **Random Forest Accuracy**: ~92–96% on held-out test set
-- **Classified distribution** across 4 segments with distinct risk profiles
+1. Generate 5000-row synthetic customer dataset
+2. Feature engineering (RFM, behavioral, stability)
+3. KMeans clustering (k=4) with Elbow + Silhouette validation
+4. RandomForest classifier trained on cluster labels
+5. Segment profiling and business impact summary
 
 ## Business Impact
-- Enables instant segment assignment at loan application time
-- Reduces manual underwriting review for Mass Market and Rising Prime tiers
-- Flags Subprime High-Risk applicants for enhanced scrutiny
-- Supports risk-based pricing and portfolio management
+- Instant segment prediction from application features
+- Risk-adjusted pricing support
+- Underwriting workflow automation
+
+## Results
+See `reports/segmentation_results.json` for cluster profiles and model metrics.
