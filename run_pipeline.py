@@ -1,143 +1,96 @@
 import json
 import numpy as np
+import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
-from src.data_loader import generate_customer_data
-from src.features import compute_features
-from src.segment import find_optimal_k, cluster, profile_segments
-from src.classify import train_classifier
+from src.data_loader import generate_synthetic_data
+from src.features import build_features
+from src.segment import cluster, remap_to_segment_names, profile_segments, find_optimal_k, SEGMENT_NAMES
+from src.classify import train_classifier, get_feature_importance
 
-SEGMENT_NAMES = {
-    0: 'Mass Market',
-    1: 'Rising Prime',
-    2: 'Established Prime',
-    3: 'Subprime High-Risk'
-}
-
-def assign_segment_names(df, labels, X):
-    """
-    Assign our 4 canonical underwriting segment names to KMeans cluster IDs.
-    Use canonical ordering: sorted by income asc → [Mass Market, Rising Prime, Established Prime, Subprime High-Risk].
-    But Subprime is actually low-income high-risk, so we sort by a composite risk score instead.
-    """
-    # Compute composite: income (higher=better) + credit_score (higher=better) - dti (lower=better)
-    centroid_df = profile_segments(X, labels, X.columns.tolist())
-
-    # Composite score: higher = more prime / lower risk
-    score = (
-        centroid_df['income'] +
-        centroid_df['credit_score'] * 1000 -
-        centroid_df['debt_to_income'] * 100000
-    )
-    sorted_segs = score.sort_values().index.tolist()  # lowest score = worst
-
-    # Map to canonical names: lowest score = Subprime High-Risk
-    canonical = ['Subprime High-Risk', 'Mass Market', 'Rising Prime', 'Established Prime']
-    name_map = {sorted_segs[i]: canonical[i] for i in range(4)}
-    return name_map
-
-def main():
+def run_pipeline():
     print("=" * 60)
-    print("CUSTOMER SEGMENTATION PIPELINE FOR UNDERWRITING")
+    print("CUSTOMER SEGMENTATION PIPELINE")
     print("=" * 60)
 
     # 1. Load data
-    print("\n[1] Generating synthetic customer data (n=5000)...")
-    df = generate_customer_data(n=5000)
-    print(f"    Shape: {df.shape}")
+    print("\n[1] Generating synthetic data (5000 rows)...")
+    df = generate_synthetic_data(n=5000, seed=42)
+    print(f"    Data shape: {df.shape}")
+    print(f"    Segment distribution:\n{df['segment_label'].value_counts().sort_index().to_string()}")
 
     # 2. Feature engineering
-    print("\n[2] Computing features...")
-    X = compute_features(df)
-    print(f"    Feature columns: {X.shape[1]}")
+    print("\n[2] Building features...")
+    X = build_features(df)
+    feature_names = X.columns.tolist()
+    print(f"    Features: {feature_names}")
 
-    # 3. Scale features
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    # 4. Elbow + Silhouette analysis
-    print("\n[3] Running Elbow + Silhouette analysis (k=2..8)...")
+    # 3. Clustering
+    print("\n[3] Finding optimal K...")
     elbow, silhouettes = find_optimal_k(X_scaled, k_range=range(2, 9))
-    best_k_idx = int(np.argmax(silhouettes) + 2)
-    best_sil = max(silhouettes)
-    print(f"    Best k by silhouette: {best_k_idx}  (score: {best_sil:.4f})")
-    print("    Silhouette scores:")
-    for k, s in zip(range(2, 9), silhouettes):
-        marker = " <-- best" if k == best_k_idx else ""
-        print(f"      k={k}: {s:.4f}{marker}")
+    best_k = silhouettes.index(max(silhouettes)) + 2
+    print(f"    Best K by silhouette: {best_k} (silhouette={max(silhouettes):.4f})")
+    print(f"    Silhouette scores: {[round(s,4) for s in silhouettes]}")
 
-    # 5. KMeans clustering (k=4 as specified)
-    print("\n[4] Clustering with KMeans (k=4)...")
-    labels, centroids, sil = cluster(X_scaled, n_clusters=4)
-    name_map = assign_segment_names(df, labels, X)
-    cluster_sizes = np.bincount(labels)
-    print(f"    Silhouette score: {sil:.4f}")
-    print("    Cluster sizes:", {int(k): int(v) for k, v in enumerate(cluster_sizes)})
-    print("    Cluster -> Name mapping:", {int(k): v for k, v in name_map.items()})
+    print(f"\n[4] Clustering with K=4 (business requirement)...")
+    raw_labels = cluster(X_scaled, n_clusters=4)
+    labels = remap_to_segment_names(df, raw_labels)
 
-    # 6. Train supervised classifier
-    print("\n[5] Training RandomForest classifier on cluster labels...")
-    clf, acc, report, X_test, y_test, y_pred = train_classifier(X_scaled, labels)
-    print(f"    Test accuracy: {acc:.4f}")
+    # 5. Profiling
+    print("\n[5] Segment profiling...")
+    profiles = profile_segments(df, labels, SEGMENT_NAMES)
 
-    # 7. Segment profiles
-    print("\n[6] Segment profiles (mean feature values):")
-    profiles = profile_segments(X, labels, X.columns.tolist())
-    for seg_id in sorted(profiles.index):
-        seg_name = name_map[int(seg_id)]
-        size = int(cluster_sizes[seg_id])
-        print(f"\n    Segment {seg_id}: {seg_name}  (n={size})")
-        row = profiles.loc[seg_id]
-        print(f"      income:          {row['income']:>14.2f}")
-        print(f"      credit_score:    {row['credit_score']:>14.2f}")
-        print(f"      employment_yrs:  {row['employment_years']:>14.2f}")
-        print(f"      dti:             {row['debt_to_income']:>14.4f}")
-        print(f"      loan_count:      {row['loan_history_count']:>14.2f}")
-        print(f"      age:             {row['age']:>14.2f}")
-        print(f"      home_owner:      {row['home_ownership']:>14.2f}")
-        print(f"      verified_income: {row['verified_income']:>14.2f}")
+    for seg_id, p in profiles.items():
+        print(f"\n    Segment {seg_id}: {p['name']}")
+        print(f"      Count: {p['count']} ({p['pct']:.1f}%)")
+        print(f"      Avg Income: ${p['mean_income']:,.0f}")
+        print(f"      Avg Credit Score: {p['mean_credit_score']:.0f}")
+        print(f"      Avg DTI: {p['mean_debt_to_income']:.3f}")
+        print(f"      Avg Employment Years: {p['mean_employment_years']:.1f}")
+        print(f"      Home Ownership Rate: {p['home_ownership_rate']:.1%}")
+        print(f"      Verified Income Rate: {p['verified_income_rate']:.1%}")
 
-    # 8. Save results
+    # 6. Classification
+    print("\n[6] Training RandomForest classifier...")
+    clf, acc, f1, report, X_test, y_test = train_classifier(X_scaled, labels)
+    print(f"    Accuracy: {acc:.4f}")
+    print(f"    F1 (weighted): {f1:.4f}")
+    print("\n    Classification Report:")
+    print(report)
+
+    importance = get_feature_importance(clf, feature_names)
+    print("    Top features:")
+    for _, row in importance.head(5).iterrows():
+        print(f"      {row['feature']}: {row['importance']:.4f}")
+
+    # 7. Save results
     results = {
-        'silhouette_k4': float(sil),
-        'silhouette_by_k': {str(k): float(s) for k, s in zip(range(2, 9), silhouettes)},
-        'best_k': int(best_k_idx),
-        'best_silhouette': float(best_sil),
-        'cluster_sizes': {str(k): int(v) for k, v in enumerate(cluster_sizes)},
-        'segment_name_map': {str(k): v for k, v in name_map.items()},
-        'centroids': centroids.tolist(),
-        'classifier_accuracy': float(acc),
-        'classification_report': report,
-        'profiles': {str(k): {col: float(v) for col, v in row.items()}
-                     for k, row in profiles.iterrows()}
+        'n_samples': 5000,
+        'n_features': len(feature_names),
+        'features': feature_names,
+        'optimal_k': best_k,
+        'silhouette_scores': {f'k={i+2}': round(s, 4) for i, s in enumerate(silhouettes)},
+        'best_silhouette': round(max(silhouettes), 4),
+        'classification_accuracy': round(acc, 4),
+        'classification_f1': round(f1, 4),
+        'segment_profiles': profiles,
+        'feature_importance': importance.to_dict(orient='records')
     }
 
-    out_path = '/home/workspace/Projects/customer-segmentation-underwriting/reports/segmentation_results.json'
-    with open(out_path, 'w') as f:
+    import os
+    os.makedirs('reports', exist_ok=True)
+    with open('reports/segmentation_results.json', 'w') as f:
         json.dump(results, f, indent=2)
-    print(f"\n[7] Results saved to {out_path}")
+    print(f"\n[7] Results saved to reports/segmentation_results.json")
 
-    # Human-readable summary
     print("\n" + "=" * 60)
-    print("SUMMARY")
+    print("PIPELINE COMPLETE")
     print("=" * 60)
-    print(f"Silhouette (k=4): {sil:.4f}")
-    print(f"Best k={best_k_idx}  silhouette={best_sil:.4f}")
-    print(f"Classifier accuracy: {acc:.4f}")
-    print(f"Cluster sizes: {[int(cluster_sizes[i]) for i in range(4)]}")
-    print("Segments:")
-    for seg_id in sorted(name_map.keys()):
-        print(f"  Cluster {seg_id} -> {name_map[seg_id]}")
 
-    summary = (
-        f"Pipeline complete.\n"
-        f"Silhouette (k=4): {sil:.4f}\n"
-        f"Best k={best_k_idx} silhouette={best_sil:.4f}\n"
-        f"Classifier accuracy: {acc:.4f}\n"
-        f"Cluster sizes: {[int(cluster_sizes[i]) for i in range(4)]}\n"
-        f"Segments: {[name_map[i] for i in sorted(name_map)]}"
-    )
-    return results, summary
+    return results
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    results = run_pipeline()

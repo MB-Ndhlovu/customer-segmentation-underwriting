@@ -1,44 +1,31 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
 
-def compute_features(df):
-    """
-    Build RFM, behavioral, and stability features from raw customer data.
+def build_features(df):
+    """Build RFM, behavioral, and stability features."""
+    feat = pd.DataFrame(index=df.index)
 
-    RFM-style analog:
-      - Recency proxy: employment_years (tenure depth)
-      - Frequency proxy: loan_history_count
-      - Monetary proxy: income / (debt_to_income + 0.01)
+    # RFM-style proxies
+    feat['income_log'] = np.log1p(df['income'])
+    feat['credit_score_norm'] = (df['credit_score'] - 300) / 550  # 0-1 scale
+    feat['employment_log'] = np.log1p(df['employment_years'])
 
-    Behavioral:
-      - income_credit_ratio
-      - dti_stability (inverse DTI risk)
+    # Behavioral signals
+    feat['loan_density'] = df['loan_history_count'] / (df['age'] - 18 + 1)  # loans per eligible year
+    feat['debt_burden'] = df['debt_to_income']
 
-    Stability:
-      - employment_to_age_ratio
-      - verified_income + home_ownership combo flag
-    """
-    X = df[['income', 'credit_score', 'employment_years',
-            'debt_to_income', 'loan_history_count', 'age',
-            'home_ownership', 'verified_income']].copy()
+    # Stability signals
+    feat['job_stability'] = df['employment_years'] / (df['age'] - 18 + 1)
+    feat['income_stability'] = feat['income_log'] * (1 - feat['debt_burden'])  # high income, low debt = stable
 
-    X['monetary_proxy'] = X['income'] / (X['debt_to_income'] + 0.01)
-    X['income_credit_ratio'] = X['income'] / (X['credit_score'] + 1)
-    X['dti_risk'] = X['debt_to_income']  # higher = riskier
-    X['tenure_depth'] = X['employment_years'] / (X['age'] - 18 + 1)
-    X['stability_score'] = (X['home_ownership'] + X['verified_income'] +
-                            (X['employment_years'] > 5).astype(int))
+    # Interaction features
+    feat['credit_x_income'] = feat['credit_score_norm'] * feat['income_log']
+    feat['credit_x_stability'] = feat['credit_score_norm'] * feat['job_stability']
 
-    feature_cols = [
-        'income', 'credit_score', 'employment_years', 'debt_to_income',
-        'loan_history_count', 'age', 'home_ownership', 'verified_income',
-        'monetary_proxy', 'income_credit_ratio', 'dti_risk',
-        'tenure_depth', 'stability_score'
-    ]
-    return X[feature_cols]
+    return feat
 
-if __name__ == '__main__':
-    from data_loader import generate_customer_data
-    df = generate_customer_data()
-    X = compute_features(df)
+if __name__ == "__main__":
+    from data_loader import generate_synthetic_data
+    df = generate_synthetic_data()
+    X = build_features(df)
     print(X.describe())
