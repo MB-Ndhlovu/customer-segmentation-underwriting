@@ -1,51 +1,30 @@
 # Customer Segmentation for Underwriting
 
 ## Overview
-This project implements unsupervised customer segmentation using KMeans clustering, followed by a supervised classification model to predict segment membership from application features. Designed for lending/underwriting workflows.
+Unsupervised KMeans clustering + supervised classification pipeline for customer segmentation in life insurance underwriting. Produces 4 actionable segments from synthetic applicant data.
 
-## Business Context
-Four actionable segments for risk-based underwriting:
-- **Mass Market** (Label 0): Standard applicants, moderate risk
-- **Rising Prime** (Label 1): Young, good credit trajectory
-- **Established Prime** (Label 2): Stable, low-risk, verified income
-- **Subprime High-Risk** (Label 3): Elevated risk requiring scrutiny
+## Segments
+| Label | Name | Profile |
+|-------|------|---------|
+| 0 | Mass Market | Moderate income, average credit, stable employment |
+| 1 | Rising Prime | Growing income, strong credit, moderate employment tenure |
+| 2 | Established Prime | High income, excellent credit, long employment history |
+| 3 | Subprime High-Risk | Low income, poor credit, short employment, high DTI |
 
-## Methodology
-
-### 1. Data Generation
-Synthetic dataset of 5,000 customers with features:
-- `income`, `credit_score`, `employment_years`, `debt_to_income`
-- `loan_history_count`, `age`, `home_ownership_status`, `verified_income`
-
-### 2. Feature Engineering
-- **RFM features**: Derived from recency/frequency/monetary signals
-- **Behavioral features**: Debt-to-income patterns, loan frequency
-- **Stability features**: Employment tenure, income verification
-
-### 3. Clustering
-KMeans with k=4, validated via:
-- Elbow method (inertia)
-- Silhouette analysis
-
-### 4. Classification
-RandomForestClassifier trained on cluster labels — enables real-time segment prediction for new applicants.
+## Pipeline
+1. **Data Generation** (`src/data_loader.py`) — 5000 synthetic customers
+2. **Feature Engineering** (`src/features.py`) — RFM, behavioral, stability features
+3. **Clustering** (`src/segment.py`) — KMeans (k=4), silhouette analysis, Elbow method
+4. **Classification** (`src/classify.py`) — RandomForest on cluster labels
+5. **run_pipeline.py** — Orchestrates full pipeline
 
 ## Results
-Pipeline produces:
-- `reports/segmentation_results.json` — segment profiles and model metrics
-- Segment centroids, silhouette score, classification accuracy
-
-## Files
-```
-src/
-  data_loader.py   — synthetic data generation
-  features.py      — RFM, behavioral, stability feature engineering
-  segment.py       — KMeans clustering + validation
-  classify.py      — RandomForest classifier on cluster labels
-run_pipeline.py    — end-to-end execution
-reports/
-  segmentation_results.json — artifacts
-```
+- Clustering silhouette score and cluster profiles saved to `reports/segmentation_results.json`
+- Classification model provides segment inference from raw application features
 
 ## Dependencies
-scikit-learn, pandas, numpy, json
+```
+pandas
+numpy
+scikit-learn
+```
