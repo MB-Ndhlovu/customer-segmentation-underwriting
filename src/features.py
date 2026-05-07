@@ -1,47 +1,50 @@
-"""Feature engineering: RFM, behavioral, and stability features."""
-import pandas as pd
+"""Feature engineering for customer segmentation."""
+
 import numpy as np
+import pandas as pd
+
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add engineered features to the customer DataFrame."""
-    f = df.copy()
+    """
+    Build RFM, behavioral, and stability feature sets.
 
-    # RFM-adjacent: income per employment year (recency proxy = employment stability)
-    f["income_per_tenure"] = f["income"] / (f["employment_years"] + 0.5)
+    RFM analogue (no actual timestamps, so we derive proxy metrics):
+      - F = loan_history_count (frequency of credit usage)
+      - M = income (monetary capacity)
+      - R = debt_to_income inverted (lower DTI = better recency/behavior)
 
-    # Behavioral: loan density (loan count per year of credit history)
-    f["loan_density"] = f["loan_history_count"] / (f["employment_years"] + 0.5)
+    Behavioral:
+      - credit_score normalised
+      - income per employment year (career trajectory)
+      - verified_income flag
 
-    # Stability: DTI stability score (inverse DTI * tenure interaction)
-    f["dti_stability"] = (1 / (f["debt_to_income"] + 0.01)) * np.log1p(f["employment_years"])
+    Stability:
+      - employment_years / age  (career stability ratio)
+      - home_ownership flag
+    """
+    X = pd.DataFrame()
 
-    # Credit quality: normalized credit score bucket
-    f["credit_bucket"] = pd.cut(
-        f["credit_score"],
-        bins=[0, 580, 670, 740, 850],
-        labels=[0, 1, 2, 3]
-    ).astype(float)
+    # RFM-analogues
+    X["frequency"] = df["loan_history_count"]
+    X["monetary"] = df["income"]
+    X["recency_proxy"] = 1 - df["debt_to_income"]  # higher = better
 
-    # Income tier
-    f["income_tier"] = pd.cut(
-        f["income"],
-        bins=[0, 40_000, 75_000, 110_000, 1_000_000],
-        labels=[0, 1, 2, 3]
-    ).astype(float)
+    # Behavioral
+    X["credit_normalised"] = (df["credit_score"] - 300) / 550  # [0,1] scale
+    X["income_per_emp_year"] = df["income"] / (df["employment_years"] + 1)
+    X["verified_income"] = df["verified_income"]
 
-    # Verified income flag (already binary 0/1)
+    # Stability
+    X["stability_ratio"] = df["employment_years"] / (df["age"] - 17 + 1)
+    X["home_ownership"] = df["home_ownership"]
 
-    return f
+    return X
 
-def get_feature_columns() -> list:
-    """Columns to use for clustering / classification."""
-    return [
-        "income",
-        "credit_score",
-        "employment_years",
-        "debt_to_income",
-        "loan_history_count",
-        "age",
-        "home_ownership_enc",
-        "verified_income",
-    ]
+
+def add_original_features(X: pd.DataFrame, df: pd.DataFrame) -> pd.DataFrame:
+    """Append raw original features alongside engineered ones."""
+    for col in ["income", "credit_score", "employment_years",
+                "debt_to_income", "loan_history_count", "age",
+                "home_ownership", "verified_income"]:
+        X[col] = df[col]
+    return X
