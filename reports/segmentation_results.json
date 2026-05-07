@@ -1,68 +1,129 @@
 {
-  "best_k": 2,
-  "silhouette_score": 0.2509,
-  "elbow_inertias": [
-    47207.9,
-    38987.65,
-    34275.39,
-    30019.75,
-    27984.6,
-    25428.27,
-    23839.12
-  ],
-  "silhouettes_by_k": {
-    "2": 0.2924,
-    "3": 0.2517,
-    "4": 0.2509,
-    "5": 0.2152,
-    "6": 0.2056,
-    "7": 0.2178,
-    "8": 0.2184
+  "n_samples": 5000,
+  "n_clusters": 4,
+  "silhouette_score": 0.2086,
+  "segment_counts": {
+    "Mass Market": 762,
+    "Rising Prime": 1419,
+    "Established Prime": 1633,
+    "Subprime High-Risk": 1186
   },
   "segment_profiles": {
-    "Mass Market": {
-      "count": 1389,
-      "pct": 27.8,
-      "income_mean": 31646.98,
-      "credit_score_mean": 568.3,
-      "debt_to_income_mean": 0.425,
-      "employment_years_mean": 2.92,
-      "age_mean": 30.4,
-      "home_ownership_rate": 0.089,
-      "verified_income_rate": 0.347
+    "0": {
+      "income": 115102.95222605302,
+      "credit_score": 560.138870953926,
+      "employment_years": 1.6032447144385091,
+      "debt_to_income": 0.5676714824723418,
+      "loan_history_count": 2.1719160104986877,
+      "age": 21.22047244094488,
+      "home_ownership": 0.34908136482939633,
+      "verified_income": 0.24540682414698162
     },
-    "Rising Prime": {
-      "count": 2604,
-      "pct": 52.1,
-      "income_mean": 56975.66,
-      "credit_score_mean": 674.5,
-      "debt_to_income_mean": 0.22,
-      "employment_years_mean": 6.2,
-      "age_mean": 32.5,
-      "home_ownership_rate": 0.393,
-      "verified_income_rate": 0.768
+    "1": {
+      "income": 95836.71282960325,
+      "credit_score": 539.0405172931384,
+      "employment_years": 1.1584164292846175,
+      "debt_to_income": 0.6218886837067256,
+      "loan_history_count": 2.5193798449612403,
+      "age": 30.84355179704017,
+      "home_ownership": 0.244538407329105,
+      "verified_income": 0.18957011980267793
     },
-    "Established Prime": {
-      "count": 991,
-      "pct": 19.8,
-      "income_mean": 127552.32,
-      "credit_score_mean": 785.8,
-      "debt_to_income_mean": 0.152,
-      "employment_years_mean": 15.02,
-      "age_mean": 45.5,
-      "home_ownership_rate": 0.796,
-      "verified_income_rate": 0.959
+    "2": {
+      "income": 281890.60078021564,
+      "credit_score": 681.4906851576452,
+      "employment_years": 3.457499571962683,
+      "debt_to_income": 0.3363243226584246,
+      "loan_history_count": 2.479485609308022,
+      "age": 34.908756889161054,
+      "home_ownership": 0.8058787507654623,
+      "verified_income": 0.6246172688303735
     },
-    "Subprime High-Risk": {
-      "count": 16,
-      "pct": 0.3,
-      "income_mean": 27110.04,
-      "credit_score_mean": 534.3,
-      "debt_to_income_mean": 0.471,
-      "employment_years_mean": 0.0,
-      "age_mean": 29.3,
-      "home_ownership_rate": 0.062,
-      "verified_income_rate": 0.188
+    "3": {
+      "income": 548362.3578281142,
+      "credit_score": 755.8249027531491,
+      "employment_years": 11.553327392017279,
+      "debt_to_income": 0.17690591887929774,
+      "loan_history_count": 4.061551433389544,
+      "age": 41.68634064080944,
+      "home_ownership": 1.3920741989881955,
+      "verified_income": 0.8473861720067454
+    }
+  },
+  "classifier_accuracy": 0.964,
+  "feature_importance": {
+    "income": 0.2302,
+    "credit_score": 0.0983,
+    "employment_years": 0.1455,
+    "debt_to_income": 0.2227,
+    "loan_history_count": 0.0111,
+    "age": 0.2474,
+    "home_ownership": 0.0263,
+    "verified_income": 0.0185
+  },
+  "confusion_matrix": [
+    [
+      147,
+      0,
+      5,
+      0
+    ],
+    [
+      0,
+      281,
+      3,
+      0
+    ],
+    [
+      1,
+      8,
+      307,
+      11
+    ],
+    [
+      1,
+      0,
+      7,
+      229
+    ]
+  ],
+  "classification_report": {
+    "0": {
+      "precision": 0.9866,
+      "recall": 0.9671,
+      "f1-score": 0.9767,
+      "support": 152.0
+    },
+    "1": {
+      "precision": 0.9723,
+      "recall": 0.9894,
+      "f1-score": 0.9808,
+      "support": 284.0
+    },
+    "2": {
+      "precision": 0.9534,
+      "recall": 0.9388,
+      "f1-score": 0.9461,
+      "support": 327.0
+    },
+    "3": {
+      "precision": 0.9542,
+      "recall": 0.9662,
+      "f1-score": 0.9602,
+      "support": 237.0
+    },
+    "accuracy": 0.964,
+    "macro avg": {
+      "precision": 0.9666,
+      "recall": 0.9654,
+      "f1-score": 0.9659,
+      "support": 1000.0
+    },
+    "weighted avg": {
+      "precision": 0.964,
+      "recall": 0.964,
+      "f1-score": 0.9639,
+      "support": 1000.0
     }
   }
 }

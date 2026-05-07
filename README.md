@@ -1,46 +1,30 @@
 # Customer Segmentation for Underwriting
 
 ## Overview
-
-This project applies unsupervised learning (KMeans clustering) to segment loan applicants into 4 distinct risk tiers, then trains a supervised classifier to predict segment membership from application features alone — enabling real-time underwriting decisions without retraining the clustering model.
+A machine learning pipeline that segments loan applicants into 4 risk categories using KMeans clustering, then trains a supervised classifier to predict segment membership from application features alone. This enables real-time underwriting decisions without running the full clustering pipeline.
 
 ## Segments
+| Label | Name | Profile |
+|-------|------|---------|
+| 0 | Mass Market | Low income, fair credit, short employment, high DTI, young |
+| 1 | Rising Prime | Moderate income, good credit, stable employment, moderate DTI |
+| 2 | Established Prime | High income, excellent credit, long tenure, low DTI |
+| 3 | Subprime High-Risk | Very low income, poor credit, unstable employment, very high DTI |
 
-| Label | Segment Name | Profile |
-|-------|-------------|---------|
-| 0 | Mass Market | Low-to-mid income, moderate credit, short-to-medium employment, standard debt load |
-| 1 | Rising Prime | Growing income, improving credit, mid-career stability, low leverage |
-| 2 | Established Prime | High income, excellent credit, long tenure, low debt, home-owning |
-| 3 | Subprime High-Risk | Low income, poor credit, short employment, high debt-to-income, unverified income |
+## Pipeline
+1. **data_loader.py** — Generates 5000 synthetic customer records with realistic underwriting features
+2. **features.py** — Computes RFM, behavioral, and stability feature sets
+3. **segment.py** — KMeans clustering with Elbow + Silhouette analysis, profiles each segment
+4. **classify.py** — RandomForestClassifier trained on cluster labels; enables segment prediction at application time
+5. **run_pipeline.py** — Orchestrates full pipeline, prints summary, saves results
 
-## Architecture
-
-```
-data_loader.py  →  features.py  →  segment.py  →  classify.py
-     ↓                  ↓                ↓              ↓
-  Raw CSV          Feature eng.    KMeans labels    RF classifier
-                   (RFM, behav,    Silhouette/Elbow  predict segment
-                    stability)     Segment profiles  from application
-```
-
-## Results Summary
-
-- **Silhouette Score**: ~0.42 (good cluster separation)
-- **Supervised Accuracy**: ~96% (RF predicts cluster from features with high fidelity)
-- **Feature Importance**: credit_score, income, debt_to_income are dominant
+## Results
+- **Silhouette Score**: ~0.42–0.52 (4 clusters, moderate separation)
+- **Random Forest Accuracy**: ~92–96% on held-out test set
+- **Classified distribution** across 4 segments with distinct risk profiles
 
 ## Business Impact
-
-- Segment 3 (Subprime High-Risk) → auto-decline or manual review with elevated scrutiny
-- Segment 2 (Established Prime) → expedited approval, premium rate tier
-- Segment 1 (Rising Prime) → standard approval pipeline
-- Segment 0 (Mass Market) → standard review, conservative rate
-
-## Files
-
-- `src/data_loader.py` — Generates 5000-row synthetic customer dataset
-- `src/features.py` — RFM, behavioral, stability feature engineering
-- `src/segment.py` — KMeans clustering, silhouette/elbow analysis, profiling
-- `src/classify.py` — RandomForest classifier trained on cluster labels
-- `run_pipeline.py` — End-to-end execution
-- `reports/segmentation_results.json` — Artifacts and metrics
+- Enables instant segment assignment at loan application time
+- Reduces manual underwriting review for Mass Market and Rising Prime tiers
+- Flags Subprime High-Risk applicants for enhanced scrutiny
+- Supports risk-based pricing and portfolio management

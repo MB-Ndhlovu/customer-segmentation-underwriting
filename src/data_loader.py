@@ -1,87 +1,97 @@
+"""Synthetic customer dataset for underwriting segmentation."""
+
 import numpy as np
 import pandas as pd
 
 np.random.seed(42)
 
-SEGMENT_NAMES = ["Mass Market", "Rising Prime", "Established Prime", "Subprime High-Risk"]
-SEGMENT_COUNTS = [1800, 1400, 1000, 800]
+def generate_customer_data(n: int = 5000) -> pd.DataFrame:
+    """
+    Generate synthetic customer records with realistic underwriting features.
 
-def load_data():
-    segment_params = {
-        "Mass Market": dict(
-            income_range=(28000, 55000),
-            credit_score_range=(580, 680),
-            employment_years_range=(1, 8),
-            debt_to_income_range=(0.15, 0.40),
-            loan_history_range=(0, 4),
-            age_range=(22, 45),
-            home_ownership_prob=0.25,
-            verified_income_prob=0.60,
-        ),
-        "Rising Prime": dict(
-            income_range=(48000, 90000),
-            credit_score_range=(660, 760),
-            employment_years_range=(3, 12),
-            debt_to_income_range=(0.10, 0.30),
-            loan_history_range=(1, 6),
-            age_range=(26, 40),
-            home_ownership_prob=0.45,
-            verified_income_prob=0.80,
-        ),
-        "Established Prime": dict(
-            income_range=(75000, 180000),
-            credit_score_range=(720, 850),
-            employment_years_range=(5, 25),
-            debt_to_income_range=(0.05, 0.25),
-            loan_history_range=(2, 10),
-            age_range=(32, 60),
-            home_ownership_prob=0.80,
-            verified_income_prob=0.95,
-        ),
-        "Subprime High-Risk": dict(
-            income_range=(15000, 35000),
-            credit_score_range=(450, 600),
-            employment_years_range=(0, 4),
-            debt_to_income_range=(0.35, 0.65),
-            loan_history_range=(0, 3),
-            age_range=(18, 38),
-            home_ownership_prob=0.10,
-            verified_income_prob=0.30,
-        ),
-    }
+    Features:
+        income: annual income in ZAR
+        credit_score: 300–850
+        employment_years: 0–40
+        debt_to_income: 0.0–1.0
+        loan_history_count: 0–15
+        age: 18–70
+        home_ownership: 0=renting, 1=owning, 2=owned (mortgage paid)
+        verified_income: 0=no, 1=yes
+        segment_label: 0–3 (assigned by clustering, not here)
+    """
 
-    records = []
-    for seg_idx, seg_name in enumerate(SEGMENT_NAMES):
-        p = segment_params[seg_name]
-        n = SEGMENT_COUNTS[seg_idx]
-        for _ in range(n):
-            income = np.random.uniform(*p["income_range"])
-            credit_score = int(np.random.uniform(*p["credit_score_range"]))
-            employment_years = round(np.random.uniform(*p["employment_years_range"]), 1)
-            dti = round(np.random.uniform(*p["debt_to_income_range"]), 3)
-            loan_count = int(np.random.randint(*p["loan_history_range"]))
-            age = int(np.random.randint(*p["age_range"]))
-            home_ownership = 1 if np.random.random() < p["home_ownership_prob"] else 0
-            verified_income = 1 if np.random.random() < p["verified_income_prob"] else 0
+    # Four segment pools — we'll sample from each to create natural clusters
+    pools = []
 
-            records.append({
-                "income": income,
-                "credit_score": credit_score,
-                "employment_years": employment_years,
-                "debt_to_income": dti,
-                "loan_history_count": loan_count,
-                "age": age,
-                "home_ownership": home_ownership,
-                "verified_income": verified_income,
-                "true_segment": seg_name,
-            })
+    # Segment 0 — Mass Market: low income, fair credit, short employment, high DTI, young
+    n0 = int(n * 0.30)
+    pools.append({
+        'income': np.random.normal(120000, 40000, n0).clip(30000, 250000),
+        'credit_score': np.random.normal(580, 60, n0).clip(400, 700),
+        'employment_years': np.random.exponential(1.5, n0).clip(0, 8),
+        'debt_to_income': np.random.beta(6, 4, n0).clip(0.25, 0.60),
+        'loan_history_count': np.random.poisson(1.5, n0).clip(0, 6),
+        'age': np.random.normal(26, 5, n0).clip(18, 45),
+        'home_ownership': np.random.choice([0, 1, 2], n0, p=[0.75, 0.15, 0.10]),
+        'verified_income': np.random.choice([0, 1], n0, p=[0.70, 0.30]),
+    })
 
-    df = pd.DataFrame(records).sample(frac=1, random_state=42).reset_index(drop=True)
+    # Segment 1 — Rising Prime: moderate income, good credit, stable employment, moderate DTI
+    n1 = int(n * 0.30)
+    pools.append({
+        'income': np.random.normal(280000, 70000, n1).clip(120000, 500000),
+        'credit_score': np.random.normal(680, 50, n1).clip(580, 780),
+        'employment_years': np.random.exponential(4, n1).clip(1, 15),
+        'debt_to_income': np.random.beta(4, 6, n1).clip(0.10, 0.40),
+        'loan_history_count': np.random.poisson(2.5, n1).clip(0, 8),
+        'age': np.random.normal(34, 7, n1).clip(24, 55),
+        'home_ownership': np.random.choice([0, 1, 2], n1, p=[0.40, 0.40, 0.20]),
+        'verified_income': np.random.choice([0, 1], n1, p=[0.40, 0.60]),
+    })
+
+    # Segment 2 — Established Prime: high income, excellent credit, long tenure, low DTI
+    n2 = int(n * 0.25)
+    pools.append({
+        'income': np.random.normal(550000, 150000, n2).clip(280000, 900000),
+        'credit_score': np.random.normal(760, 45, n2).clip(680, 850),
+        'employment_years': np.random.exponential(10, n2).clip(5, 35),
+        'debt_to_income': np.random.beta(2, 8, n2).clip(0.02, 0.28),
+        'loan_history_count': np.random.poisson(4, n2).clip(1, 12),
+        'age': np.random.normal(42, 9, n2).clip(30, 65),
+        'home_ownership': np.random.choice([0, 1, 2], n2, p=[0.15, 0.35, 0.50]),
+        'verified_income': np.random.choice([0, 1], n2, p=[0.15, 0.85]),
+    })
+
+    # Segment 3 — Subprime High-Risk: very low income, poor credit, unstable employment, very high DTI
+    n3 = n - n0 - n1 - n2
+    pools.append({
+        'income': np.random.normal(60000, 25000, n3).clip(20000, 120000),
+        'credit_score': np.random.normal(480, 55, n3).clip(300, 580),
+        'employment_years': np.random.exponential(0.8, n3).clip(0, 4),
+        'debt_to_income': np.random.beta(8, 3, n3).clip(0.45, 0.85),
+        'loan_history_count': np.random.poisson(4, n3).clip(1, 15),
+        'age': np.random.normal(30, 8, n3).clip(18, 55),
+        'home_ownership': np.random.choice([0, 1, 2], n3, p=[0.85, 0.10, 0.05]),
+        'verified_income': np.random.choice([0, 1], n3, p=[0.90, 0.10]),
+    })
+
+    # Concatenate and shuffle
+    dfs = [pd.DataFrame(p) for p in pools]
+    df = pd.concat(dfs, ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
+
+    # Round and type-cast
+    df['age'] = df['age'].round().astype(int)
+    df['loan_history_count'] = df['loan_history_count'].round().astype(int)
+    df['home_ownership'] = df['home_ownership'].astype(int)
+    df['verified_income'] = df['verified_income'].astype(int)
+
     return df
 
 
-if __name__ == "__main__":
-    df = load_data()
-    df.to_csv("/home/workspace/Projects/customer-segmentation-underwriting/customer_data.csv", index=False)
-    print(f"Generated {len(df)} rows across {len(SEGMENT_NAMES)} segments.")
-    print(df["true_segment"].value_counts().to_string())
+if __name__ == '__main__':
+    df = generate_customer_data(5000)
+    print(f"Generated {len(df)} records")
+    print(df.describe())
+    print(df['home_ownership'].value_counts().sort_index())
+    print(df['verified_income'].value_counts().sort_index())
