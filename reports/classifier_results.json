@@ -1,0 +1,58 @@
+{
+  "accuracy": 0.971,
+  "feature_importance": {
+    "debt_burden": 0.187,
+    "credit_x_income": 0.182,
+    "income": 0.1436,
+    "debt_to_income": 0.13,
+    "credit_score": 0.0962,
+    "employment_years": 0.0647,
+    "income_age_ratio": 0.0396,
+    "loan_history_count": 0.0366,
+    "age": 0.0354,
+    "verified_income": 0.0315,
+    "employment_stability": 0.019,
+    "income_per_employment_year": 0.0158,
+    "loan_density": 0.0096,
+    "home_ownership": 0.0088
+  },
+  "classification_report": {
+    "0": {
+      "precision": 0.9741,
+      "recall": 0.946,
+      "f1-score": 0.9599,
+      "support": 278.0
+    },
+    "1": {
+      "precision": 0.9695,
+      "recall": 0.975,
+      "f1-score": 0.9722,
+      "support": 521.0
+    },
+    "2": {
+      "precision": 0.9704,
+      "recall": 0.9949,
+      "f1-score": 0.9825,
+      "support": 198.0
+    },
+    "3": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 3.0
+    },
+    "accuracy": 0.971,
+    "macro avg": {
+      "precision": 0.9785,
+      "recall": 0.979,
+      "f1-score": 0.9787,
+      "support": 1000.0
+    },
+    "weighted avg": {
+      "precision": 0.971,
+      "recall": 0.971,
+      "f1-score": 0.9709,
+      "support": 1000.0
+    }
+  }
+}
