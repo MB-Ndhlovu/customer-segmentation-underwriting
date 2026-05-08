@@ -1,73 +1,80 @@
 """Execute full customer segmentation pipeline."""
+
+import json
 import sys
 import os
-import json
-import joblib
+import numpy as np
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-import pandas as pd
 from src.data_loader import generate_customer_data
-from src.features   import build_features
-from src.segment    import run_segmentation
-from src.classify   import train_classifier, save_classifier
+from src.features import build_features
+from src.segment import find_optimal_k, fit_kmeans, profile_segments, save_results
+from src.classify import train_classifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import silhouette_score
 
 
-def main():
+def run():
     print("=" * 60)
-    print("CUSTOMER SEGMENTATION PIPELINE FOR UNDERWRITING")
+    print("Customer Segmentation for Underwriting — Pipeline")
     print("=" * 60)
 
-    # 1. Load / generate data
-    print("\n[1/5] Generating synthetic customer data (5000 rows)...")
+    # 1. Load data
+    print("\n[1/5] Generating synthetic customer data (n=5000)...")
     df = generate_customer_data(n=5000, seed=42)
+    print(f"  Rows: {len(df)}, Columns: {list(df.columns)}")
 
-    # 2. Build features
-    print("[2/5] Engineering features...")
-    engineered = build_features(df)
-    engineered_cols = list(engineered.columns)
+    # 2. Feature engineering
+    print("\n[2/5] Engineering features...")
+    feat_df = build_features(df)
+    feature_cols = [
+        'income', 'credit_score', 'employment_years', 'debt_to_income',
+        'loan_history_count', 'age', 'home_ownership_enc', 'verified_income',
+        'rfm_monetary', 'behavioral_dti', 'stability_tenure_score',
+    ]
+    X = feat_df[feature_cols].values
+    print(f"  Feature matrix shape: {X.shape}")
 
-    # 3. Segmentation (KMeans) — features come from `engineered` DataFrame
-    print("[3/5] Running KMeans clustering...")
-    km, labels, scaler, profile = run_segmentation(engineered, engineered_cols, out_dir='reports')
+    # 3. Scale
+    print("\n[3/5] Scaling features...")
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    print("  StandardScaler applied.")
 
-    # 4. Supervised classification on cluster labels
-    print("[4/5] Training RandomForest classifier...")
-    clf, acc, f1, importance = train_classifier(engineered, labels, engineered_cols)
+    # 4. Clustering
+    print("\n[4/5] Running KMeans clustering...")
+    print("  Finding optimal k (2-7) via Silhouette analysis...")
+    best_k, inertias, silhouettes = find_optimal_k(X_scaled, range(2, 8), verbose=True)
+    print(f"\n  Optimal k by silhouette: {best_k} (score={max(silhouettes):.4f})")
 
-    # Save artifacts
-    save_classifier(clf, 'reports/rf_classifier.joblib')
-    joblib.dump(scaler, 'reports/scaler.joblib')
-    joblib.dump(km, 'reports/kmeans_model.joblib')
+    # Fit k=4 as requested
+    km, labels = fit_kmeans(X_scaled, n_clusters=4)
+    sil = silhouette_score(X_scaled, labels)
+    print(f"\n  Using k=4 (silhouette={sil:.4f})")
+    counts = np.bincount(labels.astype(int))
+    print(f"  Cluster distribution: {dict(enumerate(counts))}")
 
-    # 5. Summary
+    profiles, _ = profile_segments(feat_df, labels, feature_cols)
+
+    results = save_results(labels, profiles, sil, best_k,
+                           output_path='reports/segmentation_results.json')
+
+    # 5. Classification
+    print("\n[5/5] Training RandomForest classifier on cluster labels...")
+    clf, acc = train_classifier(X_scaled, labels)
+
     print("\n" + "=" * 60)
-    print("PIPELINE COMPLETE — RESULTS SUMMARY")
+    print("Pipeline Complete")
     print("=" * 60)
+    print(f"  Best k (silhouette analysis): {best_k}")
+    print(f"  Silhouette (k=4):             {sil:.4f}")
+    print(f"  RF Accuracy:                  {acc:.4f}")
+    print(f"  Results saved:                reports/segmentation_results.json")
+    print(f"  Segment counts:               {results['segment_counts']}")
 
-    results = json.load(open('reports/segmentation_results.json'))
-    print(f"\nSilhouette Score: {results['silhouette_score']}")
-    print(f"RandomForest Accuracy: {acc:.4f}")
-    print(f"RandomForest F1 (weighted): {f1:.4f}")
-    print(f"\nSegment Distribution:")
-    for seg in results['segments']:
-        print(f"  {seg['segment_name']}: {seg['count']} ({seg['pct']}%)")
-
-    print(f"\nTop 5 predictive features:")
-    for _, row in importance.head(5).iterrows():
-        print(f"  {row['feature']}: {row['importance']:.4f}")
-
-    print("\nArtifacts saved to /reports:")
-    print("  - segmentation_results.json")
-    print("  - rf_classifier.joblib")
-    print("  - scaler.joblib")
-    print("  - kmeans_model.joblib")
-    print("  - elbow_silhouette.png")
-
-    print("\n" + "=" * 60)
-
-    return results, acc, f1
+    return results, clf, acc, sil, best_k
 
 
 if __name__ == '__main__':
-    results, acc, f1 = main()
+    results, clf, acc, sil, best_k = run()

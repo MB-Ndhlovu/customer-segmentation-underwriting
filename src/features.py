@@ -1,52 +1,39 @@
-"""Feature engineering for customer segmentation."""
-import pandas as pd
+"""Feature engineering: RFM, behavioral, and stability features."""
+
 import numpy as np
+import pandas as pd
+from sklearn.preprocessing import LabelEncoder
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Create RFM, behavioral, and stability features."""
+    """Engineer features from raw customer data."""
+    X = df.copy()
 
-    feat = pd.DataFrame(index=df.index)
+    # Encode home_ownership
+    le = LabelEncoder()
+    X['home_ownership_enc'] = le.fit_transform(X['home_ownership'])
 
-    # --- RFM-style features ---
-    # Recency proxy: inverse of loan count (more loans = more recent activity)
-    feat['recency_proxy'] = 1 / (df['loan_history_count'] + 1)
+    # RFM: Recency proxy via loan_history_count + age combo
+    X['rfm_recency'] = X['age'] - X['employment_years']
+    X['rfm_frequency'] = X['loan_history_count']
+    # Monetization proxy: income per employment year
+    X['rfm_monetary'] = X['income'] / (X['employment_years'] + 1)
 
-    # Frequency: loan_history_count (already present)
-    feat['frequency'] = df['loan_history_count']
+    # Behavioral: debt burden and credit utilization signals
+    X['behavioral_dti'] = X['debt_to_income']
+    X['behavioral_credit_to_income'] = X['credit_score'] / (X['income'] / 10_000 + 1)
+    X['behavioral_loans_per_year'] = X['loan_history_count'] / (X['employment_years'] + 1)
 
-    # Monetary: income
-    feat['monetary'] = df['income']
+    # Stability: income and employment stability
+    X['stability_income_score'] = X['income'] / (X['age'] * 1000 + 1)
+    X['stability_tenure_score'] = X['employment_years'] / (X['age'] - 18 + 1)
+    X['stability_income_verified'] = X['verified_income'] * X['stability_income_score']
 
-    # --- Behavioral features ---
-    feat['credit_per_age']       = df['credit_score'] / df['age']
-    feat['income_per_age']       = df['income'] / df['age']
-    feat['debt_burden']          = df['debt_to_income'] * df['income']
-    feat['employment_stability'] = df['employment_years'] / df['age']
-
-    # --- Stability features ---
-    # Home ownership score
-    home_score = df['home_ownership'].map({'own': 3, 'mortgage': 2, 'rent': 1})
-    feat['home_score'] = home_score
-
-    # Verified income bonus
-    feat['verified_income_enc'] = df['verified_income'].astype(int)
-
-    # Income stability proxy: employment_years * income
-    feat['income_stability'] = df['employment_years'] * np.log1p(df['income'])
-
-    # Credit trajectory proxy: credit_score / (employment_years + 1)
-    feat['credit_trajectory'] = df['credit_score'] / (df['employment_years'] + 1)
-
-    return feat
+    return X
 
 
-def get_feature_names() -> list:
-    """Return list of feature names used for clustering."""
-    return [
-        'income', 'credit_score', 'employment_years', 'debt_to_income',
-        'loan_history_count', 'age', 'home_ownership_enc', 'verified_income_enc',
-        'recency_proxy', 'frequency', 'monetary',
-        'credit_per_age', 'income_per_age', 'debt_burden', 'employment_stability',
-        'home_score', 'income_stability', 'credit_trajectory',
-    ]
+if __name__ == '__main__':
+    from data_loader import generate_customer_data
+    df = generate_customer_data()
+    feat = build_features(df)
+    print(feat.describe())

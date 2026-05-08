@@ -1,13 +1,11 @@
-"""Train RandomForestClassifier on cluster labels for segment prediction."""
+"""Train RandomForestClassifier to predict segment from application features."""
+
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import (
-    classification_report, confusion_matrix,
-    accuracy_score, f1_score
-)
-import joblib
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, accuracy_score
+import json
 
 
 SEGMENT_NAMES = {
@@ -18,14 +16,11 @@ SEGMENT_NAMES = {
 }
 
 
-def train_classifier(df: pd.DataFrame, labels: np.ndarray, feature_cols: list, seed: int = 42):
-    """Train RandomForest on cluster labels; return model and metrics."""
-
-    X = df[feature_cols].values
-    y = labels
-
+def train_classifier(X: np.ndarray, y: np.ndarray,
+                     test_size: float = 0.2, random_state: int = 42):
+    """Train and evaluate a RandomForest classifier on cluster labels."""
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=seed, stratify=y
+        X, y, test_size=test_size, random_state=random_state, stratify=y
     )
 
     clf = RandomForestClassifier(
@@ -33,37 +28,60 @@ def train_classifier(df: pd.DataFrame, labels: np.ndarray, feature_cols: list, s
         max_depth=10,
         min_samples_split=5,
         min_samples_leaf=2,
-        random_state=seed,
+        random_state=random_state,
         n_jobs=-1,
-        class_weight='balanced',
     )
     clf.fit(X_train, y_train)
 
     y_pred = clf.predict(X_test)
-
     acc = accuracy_score(y_test, y_pred)
-    f1  = f1_score(y_test, y_pred, average='weighted')
 
-    print(f"\n=== Supervised Classification ===")
+    print("\n=== Classifier Performance ===")
     print(f"Accuracy: {acc:.4f}")
-    print(f"F1 Score (weighted): {f1:.4f}")
-    print(f"\nClassification Report:")
-    print(classification_report(y_test, y_pred, target_names=list(SEGMENT_NAMES.values())))
-
-    cm = confusion_matrix(y_test, y_pred)
-    print(f"Confusion Matrix:\n{cm}")
+    print("\nClassification Report:")
+    target_names = [SEGMENT_NAMES[i] for i in sorted(np.unique(y))]
+    print(classification_report(y_test, y_pred, target_names=target_names))
 
     # Feature importance
-    importance = pd.DataFrame({
-        'feature': feature_cols,
-        'importance': clf.feature_importances_,
-    }).sort_values('importance', ascending=False)
+    print("\nTop Feature Importances:")
+    feature_names = [
+        'income', 'credit_score', 'employment_years', 'debt_to_income',
+        'loan_history_count', 'age', 'home_ownership_enc', 'verified_income',
+        'rfm_monetary', 'behavioral_dti', 'stability_tenure_score',
+    ]
+    importances = sorted(zip(feature_names, clf.feature_importances_),
+                         key=lambda x: x[1], reverse=True)
+    for fname, imp in importances:
+        print(f"  {fname}: {imp:.4f}")
 
-    print(f"\nTop Feature Importances:\n{importance.head(10).to_string(index=False)}")
-
-    return clf, acc, f1, importance
+    return clf, acc
 
 
-def save_classifier(clf, out_path: str):
-    joblib.dump(clf, out_path)
-    print(f"Model saved to {out_path}")
+def predict_segment(clf, X: np.ndarray, feature_names: list) -> np.ndarray:
+    """Predict segment labels for new application data."""
+    return clf.predict(X)
+
+
+if __name__ == '__main__':
+    from data_loader import generate_customer_data
+    from features import build_features
+    from segment import fit_kmeans
+    from sklearn.preprocessing import StandardScaler
+
+    df = generate_customer_data()
+    feat_df = build_features(df)
+
+    feature_cols = [
+        'income', 'credit_score', 'employment_years', 'debt_to_income',
+        'loan_history_count', 'age', 'home_ownership_enc', 'verified_income',
+        'rfm_monetary', 'behavioral_dti', 'stability_tenure_score',
+    ]
+
+    X = feat_df[feature_cols].values
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    _, labels = fit_kmeans(X_scaled, n_clusters=4)
+    clf, acc = train_classifier(X_scaled, labels)
+
+    print(f"\nClassifier trained with accuracy: {acc:.4f}")
