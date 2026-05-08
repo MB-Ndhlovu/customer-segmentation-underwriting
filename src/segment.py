@@ -1,121 +1,94 @@
-"""KMeans clustering with Elbow + Silhouette analysis, segment profiling."""
-
 import numpy as np
-import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import silhouette_score, silhouette_samples
+from sklearn.decomposition import PCA
 import json
+import os
 
 
-SEGMENT_NAMES = {
-    0: 'Mass Market',
-    1: 'Rising Prime',
-    2: 'Established Prime',
-    3: 'Subprime High-Risk',
-}
-
-SEGMENT_NAMES_BY_INCOME_RANK = [
-    'Subprime High-Risk',  # lowest income
-    'Mass Market',
-    'Rising Prime',
-    'Established Prime',   # highest income
-]
-
-
-def find_optimal_k(X_scaled: np.ndarray, k_range: range, verbose: bool = True):
-    """Run Elbow and Silhouette analysis across a range of K."""
+def find_optimal_k(X, k_range=range(2, 11)):
     inertias = []
     silhouettes = []
 
     for k in k_range:
         km = KMeans(n_clusters=k, random_state=42, n_init=10)
-        labels = km.fit_predict(X_scaled)
+        labels = km.fit_predict(X)
         inertias.append(km.inertia_)
-        silhouettes.append(silhouette_score(X_scaled, labels))
-        if verbose:
-            print(f"  k={k}: inertia={km.inertia_:.1f}, silhouette={silhouettes[-1]:.4f}")
+        silhouettes.append(silhouette_score(X, labels))
 
-    best_k = k_range[np.argmax(silhouettes)]
-    if verbose:
-        print(f"\nBest k by silhouette: {best_k}")
-    return best_k, inertias, silhouettes
+    return list(k_range), inertias, silhouettes
 
 
-def fit_kmeans(X_scaled: np.ndarray, n_clusters: int = 4):
-    """Fit final KMeans model."""
-    km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    labels = km.fit_predict(X_scaled)
+def elbow_analysis(k_range, inertias):
+    """Simple elbow detection — second derivative."""
+    diffs = np.diff(inertias)
+    second_diffs = np.diff(diffs)
+    elbow_idx = int(np.argmax(second_diffs) + 2)
+    return elbow_idx
+
+
+def run_kmeans(X, n_clusters=4, random_state=42):
+    km = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
+    labels = km.fit_predict(X)
     return km, labels
 
 
-def profile_segments(df: pd.DataFrame, labels: np.ndarray, feature_cols: list) -> pd.DataFrame:
-    """Print and return segment profile statistics. Clusters remapped by income rank."""
-    df = df.copy()
-    df['segment'] = labels
-
-    numeric_cols = ['income', 'credit_score', 'employment_years',
-                    'debt_to_income', 'loan_history_count', 'age', 'verified_income']
-
-    # Profile by cluster
-    raw_profiles = df.groupby('segment')[numeric_cols].mean()
-
-    # Remap clusters to income rank (0=lowest income -> Subprime High-Risk)
-    income_means = raw_profiles['income']
-    rank_order = income_means.sort_values().index.tolist()  # [lowest, ..., highest]
-
-    name_map = {rank_order[i]: SEGMENT_NAMES_BY_INCOME_RANK[i] for i in range(len(rank_order))}
-
-    # Build remapped profiles with business names
-    remapped_profiles = raw_profiles.rename(index=name_map)
-    remapped_profiles.index = [f"{name}" for name in remapped_profiles.index]
-
-    print("\n=== Segment Profiles ===")
-    print(remapped_profiles.to_string())
-
-    return remapped_profiles, name_map  # name_map: cluster_id -> business_name
+def silhouette_analysis(X, labels):
+    score = silhouette_score(X, labels)
+    sample_scores = silhouette_samples(X, labels)
+    return score, sample_scores
 
 
-def save_results(labels: np.ndarray, profiles: pd.DataFrame,
-                 silhouette: float, best_k: int,
-                 output_path: str = 'reports/segmentation_results.json'):
-    """Save segmentation results to JSON."""
-    counts = np.bincount(labels.astype(int))
-    segment_counts = {str(i): int(c) for i, c in enumerate(counts)}
+def profile_segments(df, labels, feature_cols):
+    """Build segment profiles."""
+    df_labeled = df.copy()
+    df_labeled['segment'] = labels
 
+    profiles = {}
+    for seg in sorted(df_labeled['segment'].unique()):
+        seg_df = df_labeled[df_labeled['segment'] == seg]
+        profiles[int(seg)] = {
+            'count': int(len(seg_df)),
+            'pct': round(len(seg_df) / len(df_labeled) * 100, 1),
+            'mean_income': round(float(seg_df['income'].mean()), 2),
+            'mean_credit_score': round(float(seg_df['credit_score'].mean()), 1),
+            'mean_dti': round(float(seg_df['debt_to_income'].mean()), 3),
+            'mean_loan_count': round(float(seg_df['loan_history_count'].mean()), 2),
+            'mean_age': round(float(seg_df['age'].mean()), 1),
+            'pct_homeowners': round(float((seg_df['home_ownership_status'] >= 1).mean()) * 100, 1),
+            'pct_verified_income': round(float(seg_df['verified_income'].mean() * 100), 1),
+        }
+
+    # Assign business labels based on characteristics
+    seg_assignments = {}
+    for seg_id, prof in profiles.items():
+        if prof['mean_credit_score'] < 600:
+            seg_assignments[seg_id] = 'Subprime High-Risk'
+        elif prof['mean_income'] > 90000:
+            seg_assignments[seg_id] = 'Established Prime'
+        elif prof['mean_income'] > 50000:
+            seg_assignments[seg_id] = 'Rising Prime'
+        else:
+            seg_assignments[seg_id] = 'Mass Market'
+
+    return profiles, seg_assignments
+
+
+def save_results(profiles, seg_assignments, silhouette_scores, n_clusters, output_path):
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     results = {
-        'best_k': best_k,
-        'silhouette_score': round(silhouette, 4),
-        'segment_counts': segment_counts,
-        'profiles': {name: {col: round(float(v), 2) for col, v in row.items()}
-                     for name, row in profiles.iterrows()},
+        'n_clusters': n_clusters,
+        'silhouette_score': silhouette_scores,
+        'segment_profiles': profiles,
+        'segment_labels': seg_assignments,
+        'pipeline_summary': {
+            'total_customers': sum(p['count'] for p in profiles.values()),
+            'segments': list(profiles.keys())
+        }
     }
     with open(output_path, 'w') as f:
         json.dump(results, f, indent=2)
-    print(f"\nResults saved to {output_path}")
     return results
-
-
-if __name__ == '__main__':
-    from data_loader import generate_customer_data
-    from features import build_features
-
-    df = generate_customer_data()
-    feat_df = build_features(df)
-
-    feature_cols = [
-        'income', 'credit_score', 'employment_years', 'debt_to_income',
-        'loan_history_count', 'age', 'home_ownership_enc', 'verified_income',
-        'rfm_monetary', 'behavioral_dti', 'stability_tenure_score',
-    ]
-
-    X = feat_df[feature_cols].values
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-
-    best_k, _, silhouettes = find_optimal_k(X_scaled, range(2, 8))
-    km, labels = fit_kmeans(X_scaled, n_clusters=4)
-    sil = silhouette_score(X_scaled, labels)
-
-    profiles, _ = profile_segments(feat_df, labels, feature_cols)
-    results = save_results(labels, profiles, sil, best_k)

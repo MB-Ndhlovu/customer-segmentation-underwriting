@@ -1,48 +1,65 @@
 {
-  "best_k": 2,
-  "silhouette_score": 0.189,
-  "segment_counts": {
-    "0": 1491,
-    "1": 1719,
-    "2": 778,
-    "3": 1012
-  },
-  "profiles": {
-    "Rising Prime": {
-      "income": 77090.23,
-      "credit_score": 716.85,
-      "employment_years": 15.13,
-      "debt_to_income": 0.17,
-      "loan_history_count": 2.98,
-      "age": 32.49,
-      "verified_income": 0.84
+  "n_clusters": 4,
+  "silhouette_score": 0.20005647186193842,
+  "segment_profiles": {
+    "0": {
+      "count": 1482,
+      "pct": 29.6,
+      "mean_income": 104722.33,
+      "mean_credit_score": 753.6,
+      "mean_dti": 0.162,
+      "mean_loan_count": 2.88,
+      "mean_age": 45.5,
+      "pct_homeowners": 93.8,
+      "pct_verified_income": 85.1
     },
-    "Mass Market": {
-      "income": 57039.44,
-      "credit_score": 662.49,
-      "employment_years": 7.79,
-      "debt_to_income": 0.27,
-      "loan_history_count": 2.0,
-      "age": 39.31,
-      "verified_income": 0.49
+    "1": {
+      "count": 1206,
+      "pct": 24.1,
+      "mean_income": 52906.16,
+      "mean_credit_score": 668.2,
+      "mean_dti": 0.24,
+      "mean_loan_count": 1.72,
+      "mean_age": 36.3,
+      "pct_homeowners": 38.1,
+      "pct_verified_income": 100.0
     },
-    "Subprime High-Risk": {
-      "income": 33029.08,
-      "credit_score": 578.63,
-      "employment_years": 3.11,
-      "debt_to_income": 0.47,
-      "loan_history_count": 4.99,
-      "age": 30.41,
-      "verified_income": 0.21
+    "2": {
+      "count": 1718,
+      "pct": 34.4,
+      "mean_income": 42996.91,
+      "mean_credit_score": 634.8,
+      "mean_dti": 0.27,
+      "mean_loan_count": 1.6,
+      "mean_age": 34.8,
+      "pct_homeowners": 30.6,
+      "pct_verified_income": 0.0
     },
-    "Established Prime": {
-      "income": 128737.33,
-      "credit_score": 774.48,
-      "employment_years": 24.72,
-      "debt_to_income": 0.08,
-      "loan_history_count": 4.07,
-      "age": 45.12,
-      "verified_income": 0.96
+    "3": {
+      "count": 594,
+      "pct": 11.9,
+      "mean_income": 29895.48,
+      "mean_credit_score": 564.0,
+      "mean_dti": 0.425,
+      "mean_loan_count": 4.78,
+      "mean_age": 29.8,
+      "pct_homeowners": 11.3,
+      "pct_verified_income": 15.0
     }
+  },
+  "segment_labels": {
+    "0": "Established Prime",
+    "1": "Rising Prime",
+    "2": "Mass Market",
+    "3": "Subprime High-Risk"
+  },
+  "pipeline_summary": {
+    "total_customers": 5000,
+    "segments": [
+      0,
+      1,
+      2,
+      3
+    ]
   }
 }

@@ -1,97 +1,89 @@
-"""Synthetic customer dataset generator."""
-
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder
 
-
-def generate_customer_data(n: int = 5000, seed: int = 42) -> pd.DataFrame:
-    """Generate synthetic customer records across 4 distinct segments."""
+def generate_synthetic_data(n=5000, seed=42):
     np.random.seed(seed)
 
-    # Segment proportions
-    n0 = int(n * 0.35)  # Mass Market
-    n1 = int(n * 0.30)  # Rising Prime
-    n2 = int(n * 0.20)  # Established Prime
-    n3 = n - n0 - n1 - n2  # Subprime High-Risk
+    # Segment distribution (approximate, will refine through clustering)
+    # We generate with known structures so clusters emerge naturally
+    segment_probs = [0.30, 0.30, 0.25, 0.15]
 
-    segments = (
-        [0] * n0 + [1] * n1 + [2] * n2 + [3] * n3
-    )
-    np.random.shuffle(segments)
+    # Allocate segment to each row
+    segment_assignments = np.random.choice(4, size=n, p=segment_probs)
 
-    income = np.zeros(n)
-    credit_score = np.zeros(n)
-    employment_years = np.zeros(n)
-    debt_to_income = np.zeros(n)
-    loan_history_count = np.zeros(n)
-    age = np.zeros(n)
-    home_ownership = [''] * n
-    verified_income = np.zeros(n)
+    data = {
+        'income': np.zeros(n),
+        'credit_score': np.zeros(n),
+        'employment_years': np.zeros(n),
+        'debt_to_income': np.zeros(n),
+        'loan_history_count': np.zeros(n),
+        'age': np.zeros(n),
+        'home_ownership_status': np.zeros(n),  # 0=rent, 1=mortgage, 2=own
+        'verified_income': np.zeros(n),         # 0=no, 1=yes
+        'segment_label': segment_assignments
+    }
 
-    for i, seg in enumerate(segments):
-        if seg == 0:  # Mass Market
-            income[i] = np.random.normal(55_000, 15_000)
-            credit_score[i] = np.random.normal(660, 50)
-            employment_years[i] = np.random.gamma(4, 2)
-            debt_to_income[i] = np.random.beta(4, 5) * 0.4 + 0.1
-            loan_history_count[i] = np.random.poisson(2)
-            age[i] = np.random.normal(38, 8)
-            home_ownership[i] = np.random.choice(['rent', 'own'], p=[0.6, 0.4])
-            verified_income[i] = np.random.choice([0, 1], p=[0.5, 0.5])
+    for i in range(n):
+        seg = segment_assignments[i]
 
-        elif seg == 1:  # Rising Prime
-            income[i] = np.random.normal(80_000, 20_000)
-            credit_score[i] = np.random.normal(720, 45)
-            employment_years[i] = np.random.gamma(6, 2.5)
-            debt_to_income[i] = np.random.beta(3, 6) * 0.35 + 0.05
-            loan_history_count[i] = np.random.poisson(3)
-            age[i] = np.random.normal(34, 6)
-            home_ownership[i] = np.random.choice(['rent', 'own'], p=[0.4, 0.6])
-            verified_income[i] = np.random.choice([0, 1], p=[0.2, 0.8])
+        # Mass Market (0): low income, mid credit, short history
+        if seg == 0:
+            data['income'][i] = np.random.normal(35000, 8000)
+            data['credit_score'][i] = np.random.normal(620, 50)
+            data['employment_years'][i] = np.random.exponential(2)
+            data['debt_to_income'][i] = np.random.normal(0.28, 0.08)
+            data['loan_history_count'][i] = np.random.poisson(1.5)
+            data['age'][i] = np.random.randint(22, 45)
+            data['home_ownership_status'][i] = np.random.choice([0, 1], p=[0.8, 0.2])
+            data['verified_income'][i] = np.random.choice([0, 1], p=[0.7, 0.3])
 
-        elif seg == 2:  # Established Prime
-            income[i] = np.random.normal(130_000, 35_000)
-            credit_score[i] = np.random.normal(780, 40)
-            employment_years[i] = np.random.gamma(10, 2.5)
-            debt_to_income[i] = np.random.beta(2, 8) * 0.25 + 0.02
-            loan_history_count[i] = np.random.poisson(4)
-            age[i] = np.random.normal(45, 8)
-            home_ownership[i] = np.random.choice(['rent', 'own'], p=[0.1, 0.9])
-            verified_income[i] = np.random.choice([0, 1], p=[0.05, 0.95])
+        # Rising Prime (1): moderate income, improving credit
+        elif seg == 1:
+            data['income'][i] = np.random.normal(65000, 12000)
+            data['credit_score'][i] = np.random.normal(700, 40)
+            data['employment_years'][i] = np.random.exponential(4)
+            data['debt_to_income'][i] = np.random.normal(0.22, 0.06)
+            data['loan_history_count'][i] = np.random.poisson(2)
+            data['age'][i] = np.random.randint(28, 50)
+            data['home_ownership_status'][i] = np.random.choice([0, 1, 2], p=[0.4, 0.45, 0.15])
+            data['verified_income'][i] = np.random.choice([0, 1], p=[0.4, 0.6])
 
-        else:  # Subprime High-Risk
-            income[i] = np.random.normal(32_000, 10_000)
-            credit_score[i] = np.random.normal(580, 55)
-            employment_years[i] = np.random.gamma(2, 1.5)
-            debt_to_income[i] = np.random.beta(6, 4) * 0.45 + 0.2
-            loan_history_count[i] = np.random.poisson(5)
-            age[i] = np.random.normal(30, 7)
-            home_ownership[i] = np.random.choice(['rent', 'own'], p=[0.85, 0.15])
-            verified_income[i] = np.random.choice([0, 1], p=[0.8, 0.2])
+        # Established Prime (2): high income, strong credit, stable
+        elif seg == 2:
+            data['income'][i] = np.random.normal(110000, 25000)
+            data['credit_score'][i] = np.random.normal(760, 35)
+            data['employment_years'][i] = np.random.exponential(8)
+            data['debt_to_income'][i] = np.random.normal(0.15, 0.05)
+            data['loan_history_count'][i] = np.random.poisson(3)
+            data['age'][i] = np.random.randint(35, 60)
+            data['home_ownership_status'][i] = np.random.choice([0, 1, 2], p=[0.1, 0.4, 0.5])
+            data['verified_income'][i] = np.random.choice([0, 1], p=[0.1, 0.9])
 
-    df = pd.DataFrame({
-        'income': income,
-        'credit_score': credit_score,
-        'employment_years': employment_years,
-        'debt_to_income': debt_to_income,
-        'loan_history_count': loan_history_count,
-        'age': age,
-        'home_ownership': home_ownership,
-        'verified_income': verified_income,
-    })
+        # Subprime High-Risk (3): low credit, high DTI, many prior loans
+        elif seg == 3:
+            data['income'][i] = np.random.normal(28000, 7000)
+            data['credit_score'][i] = np.random.normal(560, 45)
+            data['employment_years'][i] = np.random.exponential(1.5)
+            data['debt_to_income'][i] = np.random.normal(0.42, 0.10)
+            data['loan_history_count'][i] = np.random.poisson(4)
+            data['age'][i] = np.random.randint(20, 40)
+            data['home_ownership_status'][i] = np.random.choice([0, 1], p=[0.9, 0.1])
+            data['verified_income'][i] = np.random.choice([0, 1], p=[0.85, 0.15])
 
-    df['income'] = df['income'].clip(lower=0)
-    df['credit_score'] = df['credit_score'].clip(lower=300, upper=850)
-    df['employment_years'] = df['employment_years'].clip(lower=0)
-    df['debt_to_income'] = df['debt_to_income'].clip(lower=0, upper=1)
-    df['loan_history_count'] = df['loan_history_count'].astype(int)
-    df['age'] = df['age'].clip(lower=18, upper=80)
+    df = pd.DataFrame(data)
+
+    # Clip to realistic bounds
+    df['income'] = df['income'].clip(15000, 300000)
+    df['credit_score'] = df['credit_score'].clip(450, 850)
+    df['employment_years'] = df['employment_years'].clip(0, 40)
+    df['debt_to_income'] = df['debt_to_income'].clip(0.01, 0.60)
+    df['loan_history_count'] = df['loan_history_count'].clip(0, 15)
+    df['age'] = df['age'].clip(18, 70)
 
     return df
 
 
-if __name__ == '__main__':
-    df = generate_customer_data()
-    print(df.describe())
-    print(df['home_ownership'].value_counts())
+def load_data(path=None):
+    if path:
+        return pd.read_csv(path)
+    return generate_synthetic_data()

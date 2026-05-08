@@ -1,80 +1,91 @@
-"""Execute full customer segmentation pipeline."""
-
-import json
 import sys
-import os
+import json
 import numpy as np
-
-sys.path.insert(0, os.path.dirname(__file__))
-
-from src.data_loader import generate_customer_data
+from src.data_loader import load_data
 from src.features import build_features
-from src.segment import find_optimal_k, fit_kmeans, profile_segments, save_results
+from src.segment import (
+    find_optimal_k, elbow_analysis, run_kmeans, silhouette_analysis,
+    profile_segments, save_results
+)
 from src.classify import train_classifier
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import silhouette_score
 
-
-def run():
+def main():
     print("=" * 60)
-    print("Customer Segmentation for Underwriting — Pipeline")
+    print("CUSTOMER SEGMENTATION PIPELINE")
     print("=" * 60)
 
     # 1. Load data
-    print("\n[1/5] Generating synthetic customer data (n=5000)...")
-    df = generate_customer_data(n=5000, seed=42)
-    print(f"  Rows: {len(df)}, Columns: {list(df.columns)}")
+    print("\n[1/5] Generating synthetic customer data...")
+    df = load_data()
+    print(f"  -> {len(df)} customers loaded")
 
-    # 2. Feature engineering
+    # 2. Build features
     print("\n[2/5] Engineering features...")
-    feat_df = build_features(df)
-    feature_cols = [
-        'income', 'credit_score', 'employment_years', 'debt_to_income',
-        'loan_history_count', 'age', 'home_ownership_enc', 'verified_income',
-        'rfm_monetary', 'behavioral_dti', 'stability_tenure_score',
-    ]
-    X = feat_df[feature_cols].values
-    print(f"  Feature matrix shape: {X.shape}")
+    X, feature_cols, scaler = build_features(df)
+    print(f"  -> {X.shape[1]} features built")
 
-    # 3. Scale
-    print("\n[3/5] Scaling features...")
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    print("  StandardScaler applied.")
+    # 3. Clustering
+    print("\n[3/5] Running KMeans clustering...")
+    k_range, inertias, silhouettes = find_optimal_k(X)
+    elbow_k = elbow_analysis(k_range, inertias)
 
-    # 4. Clustering
-    print("\n[4/5] Running KMeans clustering...")
-    print("  Finding optimal k (2-7) via Silhouette analysis...")
-    best_k, inertias, silhouettes = find_optimal_k(X_scaled, range(2, 8), verbose=True)
-    print(f"\n  Optimal k by silhouette: {best_k} (score={max(silhouettes):.4f})")
+    n_clusters = 4
+    km, labels = run_kmeans(X, n_clusters=n_clusters)
+    silhouette_scores, _ = silhouette_analysis(X, labels)
 
-    # Fit k=4 as requested
-    km, labels = fit_kmeans(X_scaled, n_clusters=4)
-    sil = silhouette_score(X_scaled, labels)
-    print(f"\n  Using k=4 (silhouette={sil:.4f})")
-    counts = np.bincount(labels.astype(int))
-    print(f"  Cluster distribution: {dict(enumerate(counts))}")
+    print(f"  -> Optimal K (elbow): {elbow_k}")
+    print(f"  -> Silhouette Score: {silhouette_scores:.4f}")
 
-    profiles, _ = profile_segments(feat_df, labels, feature_cols)
+    # 4. Profile segments
+    print("\n[4/5] Profiling segments...")
+    profiles, seg_assignments = profile_segments(df, labels, feature_cols)
 
-    results = save_results(labels, profiles, sil, best_k,
-                           output_path='reports/segmentation_results.json')
+    segment_names = ['Mass Market', 'Rising Prime', 'Established Prime', 'Subprime High-Risk']
+    for seg_id, name in seg_assignments.items():
+        prof = profiles[seg_id]
+        print(f"  Segment {seg_id} ({name}):")
+        print(f"    Count: {prof['count']} ({prof['pct']}%)")
+        print(f"    Avg Income: ${prof['mean_income']:,.0f}")
+        print(f"    Avg Credit Score: {prof['mean_credit_score']:.0f}")
+        print(f"    Avg DTI: {prof['mean_dti']:.3f}")
+        print(f"    Avg Loan Count: {prof['mean_loan_count']:.1f}")
 
-    # 5. Classification
-    print("\n[5/5] Training RandomForest classifier on cluster labels...")
-    clf, acc = train_classifier(X_scaled, labels)
+    # 5. Train classifier
+    print("\n[5/5] Training RandomForest classifier...")
+    clf, acc, report = train_classifier(X, labels)
+    print(f"  -> Classification Accuracy: {acc:.4f}")
+    print(f"  -> Macro F1: {report['macro avg']['f1-score']:.4f}")
+
+    # Save results
+    results = save_results(
+        profiles, seg_assignments, float(silhouette_scores),
+        n_clusters,
+        '/home/workspace/Projects/customer-segmentation-underwriting/reports/segmentation_results.json'
+    )
 
     print("\n" + "=" * 60)
-    print("Pipeline Complete")
+    print("PIPELINE COMPLETE")
     print("=" * 60)
-    print(f"  Best k (silhouette analysis): {best_k}")
-    print(f"  Silhouette (k=4):             {sil:.4f}")
-    print(f"  RF Accuracy:                  {acc:.4f}")
-    print(f"  Results saved:                reports/segmentation_results.json")
-    print(f"  Segment counts:               {results['segment_counts']}")
+    print(f"\nResults saved to: reports/segmentation_results.json")
+    print(f"\nSegment Distribution:")
+    for seg_id, name in seg_assignments.items():
+        prof = profiles[seg_id]
+        print(f"  {name}: {prof['count']} ({prof['pct']}%)")
+    print(f"\nClustering Silhouette Score: {silhouette_scores:.4f}")
+    print(f"Classification Accuracy: {acc:.4f}")
+    print(f"Macro F1-Score: {report['macro avg']['f1-score']:.4f}")
 
-    return results, clf, acc, sil, best_k
+    # Summary dict for Telegram
+    summary = {
+        'customers': len(df),
+        'features': X.shape[1],
+        'silhouette_score': round(silhouette_scores, 4),
+        'classification_accuracy': round(acc, 4),
+        'macro_f1': round(report['macro avg']['f1-score'], 4),
+        'segments': {seg_assignments[k]: profiles[k] for k in profiles}
+    }
+    return summary
 
 
 if __name__ == '__main__':
-    results, clf, acc, sil, best_k = run()
+    summary = main()
