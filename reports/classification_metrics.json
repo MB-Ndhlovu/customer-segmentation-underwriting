@@ -1,0 +1,42 @@
+{
+  "accuracy": 0.965,
+  "f1_weighted": 0.9649635068249582,
+  "precision_weighted": 0.9652057964129087,
+  "recall_weighted": 0.965,
+  "confusion_matrix": [
+    [
+      126,
+      0,
+      0,
+      8
+    ],
+    [
+      2,
+      298,
+      3,
+      0
+    ],
+    [
+      0,
+      10,
+      272,
+      5
+    ],
+    [
+      5,
+      0,
+      2,
+      269
+    ]
+  ],
+  "feature_importance": {
+    "verified_income": 0.325,
+    "income": 0.1646,
+    "debt_to_income": 0.1369,
+    "credit_score": 0.1226,
+    "home_ownership": 0.1091,
+    "loan_history_count": 0.0665,
+    "age": 0.0403,
+    "employment_years": 0.0349
+  }
+}

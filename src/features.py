@@ -1,48 +1,64 @@
+"""Feature engineering for customer segmentation."""
+
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
 
-def build_features(df):
-    """Build RFM, behavioral, and stability features."""
+def build_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Create RFM, behavioral, and stability features from raw application data."""
+    X = df[[
+        "income", "credit_score", "employment_years",
+        "debt_to_income", "loan_history_count", "age",
+        "home_ownership", "verified_income"
+    ]].copy()
 
-    # Rename column for consistency
-    df = df.copy()
+    # RFM-equivalent features (proxy for recency/frequency via available signals)
+    # Recency proxy: credit_score trend (higher score = more recent activity)
+    X["credit_score_norm"] = X["credit_score"] / 850
 
-    # RFM-inspired features
-    # Recency proxy: employment stability (inverse of turnover)
-    df['employment_stability'] = df['employment_years'] / (df['age'] - 18 + 1)
+    # Frequency proxy: loan history density (loans per year of credit history)
+    X["loan_frequency"] = X["loan_history_count"] / (X["employment_years"] + 0.5)
 
-    # Frequency: loan history density
-    df['loan_frequency'] = df['loan_history_count'] / (df['age'] - 18 + 1)
-
-    # Monetary: income per age-year
-    df['income_per_age'] = df['income'] / (df['age'] + 1)
+    # Monetary proxy: income per age (proxy for earnings trajectory)
+    X["income_per_age"] = X["income"] / X["age"]
 
     # Behavioral features
-    df['credit_utilization_estimate'] = df['debt_to_income'] * df['income']
-    df['credit_per_employment_year'] = df['loan_history_count'] / (df['employment_years'] + 1)
-    df['verified_income_flag'] = df['verified_income']
+    # Credit utilization signal (high loan count + low score = over-leveraged)
+    X["leverage_signal"] = X["loan_history_count"] * (1 - X["credit_score_norm"])
+
+    # DTI severity (quadratic to weight high DTI customers)
+    X["dti_severity"] = X["debt_to_income"] ** 1.5
 
     # Stability features
-    df['income_stability'] = df['income'] / df['income_per_age']
-    df['home_ownership_encoded'] = df['home_ownership_status']
+    # Employment stability ratio (longer tenure = more stable)
+    X["employment_stability"] = X["employment_years"] / (X["age"] - 18 + 1)
 
-    # Composite risk indicators
-    df['debt_burden'] = df['debt_to_income'] * df['loan_history_count']
-    df['credit_strength'] = df['credit_score'] * (1 - df['debt_to_income'])
+    # Home ownership as stability signal
+    X["home_stability"] = X["home_ownership"]
 
-    feature_cols = [
-        'income', 'credit_score', 'employment_years', 'debt_to_income',
-        'loan_history_count', 'age', 'home_ownership_status', 'verified_income',
-        'employment_stability', 'loan_frequency', 'income_per_age',
-        'credit_utilization_estimate', 'credit_per_employment_year',
-        'verified_income_flag', 'home_ownership_encoded', 'debt_burden', 'credit_strength'
-    ]
+    # Income verification boost
+    X["verified_income_flag"] = X["verified_income"]
 
-    X = df[feature_cols].values
+    # Affordability score (inverse of DTI, normalized)
+    X["affordability"] = (0.50 - X["debt_to_income"]) / 0.50
+    X["affordability"] = X["affordability"].clip(0, 1)
 
+    return X
+
+
+def scale_features(X: pd.DataFrame) -> tuple:
+    """Standardize features and return scaler for later inverse-transform."""
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
+    return X_scaled, scaler
 
-    return X_scaled, feature_cols, scaler
+
+if __name__ == "__main__":
+    from data_loader import generate_customer_data
+
+    df = generate_customer_data()
+    X = build_features(df)
+    print("Feature columns:", X.columns.tolist())
+    print("\nFeature stats:")
+    print(X.describe().T[["mean", "std", "min", "max"]])

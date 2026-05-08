@@ -1,65 +1,69 @@
 {
-  "n_clusters": 4,
-  "silhouette_score": 0.20005647186193842,
-  "segment_profiles": {
-    "0": {
-      "count": 1482,
-      "pct": 29.6,
-      "mean_income": 104722.33,
-      "mean_credit_score": 753.6,
-      "mean_dti": 0.162,
-      "mean_loan_count": 2.88,
-      "mean_age": 45.5,
-      "pct_homeowners": 93.8,
-      "pct_verified_income": 85.1
+  "optimal_k": 4,
+  "k_tested_range": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "metrics": [
+    {
+      "k": 2,
+      "inertia": 63986.55693670113,
+      "silhouette": 0.22095650511889162
     },
-    "1": {
-      "count": 1206,
-      "pct": 24.1,
-      "mean_income": 52906.16,
-      "mean_credit_score": 668.2,
-      "mean_dti": 0.24,
-      "mean_loan_count": 1.72,
-      "mean_age": 36.3,
-      "pct_homeowners": 38.1,
-      "pct_verified_income": 100.0
+    {
+      "k": 3,
+      "inertia": 54580.70800409245,
+      "silhouette": 0.20383763513952757
     },
-    "2": {
-      "count": 1718,
-      "pct": 34.4,
-      "mean_income": 42996.91,
-      "mean_credit_score": 634.8,
-      "mean_dti": 0.27,
-      "mean_loan_count": 1.6,
-      "mean_age": 34.8,
-      "pct_homeowners": 30.6,
-      "pct_verified_income": 0.0
+    {
+      "k": 4,
+      "inertia": 48881.45537215281,
+      "silhouette": 0.19473586448894853
     },
-    "3": {
-      "count": 594,
-      "pct": 11.9,
-      "mean_income": 29895.48,
-      "mean_credit_score": 564.0,
-      "mean_dti": 0.425,
-      "mean_loan_count": 4.78,
-      "mean_age": 29.8,
-      "pct_homeowners": 11.3,
-      "pct_verified_income": 15.0
+    {
+      "k": 5,
+      "inertia": 45385.13774058991,
+      "silhouette": 0.1942349220989821
+    },
+    {
+      "k": 6,
+      "inertia": 42533.53371388915,
+      "silhouette": 0.19719375724180377
+    },
+    {
+      "k": 7,
+      "inertia": 40399.70542589202,
+      "silhouette": 0.19710851081650882
+    },
+    {
+      "k": 8,
+      "inertia": 38351.070779652306,
+      "silhouette": 0.1873473354622599
+    },
+    {
+      "k": 9,
+      "inertia": 36585.96866638631,
+      "silhouette": 0.19446943046802803
     }
+  ],
+  "silhouette_avg": 0.19473586448894853,
+  "segment_counts": {
+    "0": 672,
+    "1": 1516,
+    "2": 1434,
+    "3": 1378
   },
-  "segment_labels": {
-    "0": "Established Prime",
+  "segment_names": {
+    "0": "Mass Market",
     "1": "Rising Prime",
-    "2": "Mass Market",
+    "2": "Established Prime",
     "3": "Subprime High-Risk"
   },
-  "pipeline_summary": {
-    "total_customers": 5000,
-    "segments": [
-      0,
-      1,
-      2,
-      3
-    ]
-  }
+  "inertia": 48881.45537215281
 }
