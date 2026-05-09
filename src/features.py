@@ -1,76 +1,50 @@
-"""
-Feature engineering for customer segmentation.
-RFM features: Recency, Frequency, Monetary (adapted for lending context)
-Behavioral features: credit utilization patterns, loan behavior
-Stability features: employment tenure, income verification, home ownership
-"""
-
 import pandas as pd
 import numpy as np
 
-
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Engineer features from raw customer data.
-    Returns DataFrame with all features ready for clustering.
+    Feature engineering:
+    - RFM features: income-to-credit ratio, credit utilization proxy
+    - Behavioral features: loan density (loan_history/age), DTI risk flag
+    - Stability features: employment stability, home ownership weight
     """
-    f = pd.DataFrame()
+    X = df.copy()
 
-    # --- RFM-adjacent features ---
-    # Frequency: loan_history_count is already a proxy for frequency
-    f["loan_frequency"] = df["loan_history_count"]
+    # RFM-inspired features
+    X["income_credit_ratio"] = X["income"] / (X["credit_score"] + 1)
+    X["income_per_employment_year"] = X["income"] / (X["employment_years"] + 1)
 
-    # Monetary: income proxies spending capacity
-    f["income_capacity"] = df["income"]
+    # Behavioral
+    X["loan_density"] = X["loan_history_count"] / (X["age"] - 17 + 1)  # normalized by working years
+    X["high_dti"] = (X["debt_to_income"] > 0.36).astype(int)
+    X["credit_score_binned"] = pd.cut(X["credit_score"], bins=[0, 580, 620, 670, 740, 850],
+                                       labels=[0, 1, 2, 3, 4]).astype(float).fillna(0)
 
-    # Recency proxy: younger borrowers with short employment = newer customers
-    f["recency_proxy"] = 1 / (df["age"] + 1)
+    # Stability
+    X["employment_stability"] = X["employment_years"] * (1 - X["high_dti"])
+    X["home_income_verified"] = X["home_ownership"] * X["verified_income"]
+    X["verified_income_flag"] = X["verified_income"]
 
-    # --- Behavioral features ---
-    # Credit risk indicator
-    f["credit_risk_score"] = 850 - df["credit_score"]
+    # Interaction terms
+    X["dti_x_loan_count"] = X["debt_to_income"] * X["loan_history_count"]
+    X["age_x_employment"] = X["age"] * X["employment_years"]
 
-    # Debt burden
-    f["debt_burden"] = df["debt_to_income"]
-
-    # Loan density (loans per year of employment)
-    f["loan_density"] = df["loan_history_count"] / (df["employment_years"] + 0.1)
-
-    # Income stability ratio
-    f["income_stability"] = df["verified_income"] * np.log1p(df["income"])
-
-    # --- Stability features ---
-    f["employment_stability"] = np.log1p(df["employment_years"])
-
-    f["home_ownership_flag"] = df["home_ownership"]
-
-    f["verified_income_flag"] = df["verified_income"]
-
-    # Combined stability score
-    f["stability_score"] = (
-        f["home_ownership_flag"] * 0.3 +
-        f["verified_income_flag"] * 0.3 +
-        (f["employment_stability"] / 5) * 0.4
-    ).clip(0, 1)
-
-    # Age bracket feature
-    f["age_bracket"] = pd.cut(df["age"], bins=[0, 25, 35, 50, 100], labels=[0, 1, 2, 3]).astype(int)
-
-    # Income tier
-    f["income_tier"] = pd.cut(
-        df["income"],
-        bins=[0, 35000, 60000, 100000, np.inf],
-        labels=[0, 1, 2, 3]
-    ).astype(int)
-
-    return f
+    return X
 
 
-def get_feature_names() -> list:
-    """Return list of all engineered feature names."""
+def get_feature_columns() -> list:
     return [
-        "loan_frequency", "income_capacity", "recency_proxy",
-        "credit_risk_score", "debt_burden", "loan_density",
-        "income_stability", "employment_stability", "home_ownership_flag",
-        "verified_income_flag", "stability_score", "age_bracket", "income_tier"
+        "income", "credit_score", "employment_years", "debt_to_income",
+        "loan_history_count", "age", "home_ownership", "verified_income",
+        "income_credit_ratio", "income_per_employment_year", "loan_density",
+        "high_dti", "credit_score_binned", "employment_stability",
+        "home_income_verified", "dti_x_loan_count", "age_x_employment",
     ]
+
+
+if __name__ == "__main__":
+    from data_loader import generate_customer_data
+    df = generate_customer_data()
+    X = build_features(df)
+    print(X.head())
+    print("Shape:", X.shape)

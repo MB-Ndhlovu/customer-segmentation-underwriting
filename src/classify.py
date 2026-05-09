@@ -1,88 +1,55 @@
-"""
-Supervised classification of customer segments.
-Trains RandomForestClassifier on cluster labels from KMeans.
-Enables real-time segment prediction from application features.
-"""
-
-import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, accuracy_score
-import json
 
 
-def train_classifier(X, y, test_size: float = 0.2, random_state: int = 42):
-    """
-    Train RandomForest classifier on cluster labels.
-    Returns model, metrics, and feature importances.
-    """
+def train_classifier(X: pd.DataFrame, y: pd.Series, feature_cols: list):
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=random_state, stratify=y
+        X[feature_cols], y, test_size=0.2, random_state=42, stratify=y
     )
 
     clf = RandomForestClassifier(
         n_estimators=200,
         max_depth=10,
-        min_samples_split=5,
-        min_samples_leaf=2,
-        random_state=random_state,
+        min_samples_leaf=5,
+        random_state=42,
         n_jobs=-1,
-        class_weight="balanced"
     )
-
     clf.fit(X_train, y_train)
-    y_pred = clf.predict(X_test)
 
-    accuracy = accuracy_score(y_test, y_pred)
+    y_pred = clf.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
+
     report = classification_report(y_test, y_pred, output_dict=True)
 
-    importances = {
-        f"feature_{i}": float(v)
-        for i, v in enumerate(clf.feature_importances_)
-    }
+    # Feature importance
+    importance = pd.DataFrame({
+        "feature": feature_cols,
+        "importance": clf.feature_importances_,
+    }).sort_values("importance", ascending=False)
 
-    metrics = {
-        "accuracy": float(accuracy),
-        "classification_report": report,
-        "n_train": len(X_train),
-        "n_test": len(X_test)
-    }
-
-    return clf, metrics, importances
-
-
-def predict_segment(clf, X):
-    """Predict segment for new application data."""
-    return clf.predict(X)
-
-
-def cross_validate(X, y, cv: int = 5):
-    """Run cross-validation on the classifier."""
-    from sklearn.model_selection import cross_val_score
-    clf = RandomForestClassifier(
-        n_estimators=200, max_depth=10, random_state=42,
-        n_jobs=-1, class_weight="balanced"
-    )
-    scores = cross_val_score(clf, X, y, cv=cv, scoring="accuracy")
-    return {
-        "mean_accuracy": float(scores.mean()),
-        "std_accuracy": float(scores.std()),
-        "cv_folds": cv
-    }
+    return clf, acc, report, importance
 
 
 if __name__ == "__main__":
-    from .data_loader import generate_customer_data, get_feature_columns
+    from data_loader import generate_customer_data
+    from features import build_features, get_feature_columns
+    from segment import segment_customers
     from sklearn.preprocessing import StandardScaler
 
     df = generate_customer_data()
-    X = df[get_feature_columns()].values
-    y = df["segment_label"].values
+    X = build_features(df)
+    feature_cols = get_feature_columns()
 
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    X_scaled = scaler.fit_transform(X[feature_cols])
+    labels, _ = segment_customers(X_scaled, n_clusters=4)
 
-    clf, metrics, imp = train_classifier(X_scaled, y)
-    print(f"Accuracy: {metrics['accuracy']:.4f}")
-    print(classification_report(y, clf.predict(X_scaled)))
+    clf, acc, report, importance = train_classifier(X, pd.Series(labels), feature_cols)
+    print(f"Classification accuracy: {acc:.4f}")
+    print("\nClassification Report:")
+    print(classification_report(pd.Series(labels[:len(X_test)]), clf.predict(X_test[:len(X_test)])) if 'X_test' in dir() else "Run full pipeline for report")
+    print("\nFeature Importance (top 10):")
+    print(importance.head(10))

@@ -1,18 +1,24 @@
-"""
-Customer Segmentation for Underwriting
-=======================================
-Identifies 4 distinct customer segments for lending risk assessment:
-- Mass Market       (Segment 0): Low risk, broad access
-- Rising Prime      (Segment 1): Moderate risk, growth profile
-- Established Prime (Segment 2): Low risk, stable borrowers
-- Subprime High-Risk (Segment 3): High risk, requires caution
+# Customer Segmentation for Underwriting
 
-Pipeline:
-1. Load synthetic customer data (5000 rows)
-2. Engineer RFM + behavioral + stability features
-3. KMeans clustering with elbow + silhouette validation
-4. Train RandomForest classifier on cluster labels
-5. Profile each segment for underwriting decisions
-"""
+## Overview
+KMeans clustering + supervised classification pipeline for credit risk segmentation. Identifies 4 actionable customer segments for underwriting decisions.
 
-__version__ = "1.0.0"
+## Segments
+- **Segment 0: Mass Market** — Average credit, moderate income, standard risk
+- **Segment 1: Rising Prime** — Good credit, growing income, low risk
+- **Segment 2: Established Prime** — Excellent credit, high income, very low risk
+- **Segment 3: Subprime High-Risk** — Poor credit, high DTI, elevated default risk
+
+## Pipeline
+1. `data_loader.py` — Generates 5000 synthetic customer records
+2. `features.py` — RFM + behavioral + stability feature engineering
+3. `segment.py` — KMeans (k=4), silhouette analysis, elbow method, profiling
+4. `classify.py` — RandomForestClassifier trained on cluster labels
+5. `run_pipeline.py` — End-to-end execution, saves results to `reports/segmentation_results.json`
+
+## Results
+- Silhouette score, inertia, cluster profiles saved to `reports/segmentation_results.json`
+- Classification model predicts segment from application features alone
+
+## Business Impact
+Enables lenders to automatically classify loan applicants into risk tiers, supporting pricing, credit limit, and approval decisions.
