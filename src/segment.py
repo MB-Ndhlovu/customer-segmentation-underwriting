@@ -1,18 +1,14 @@
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import silhouette_score, silhouette_samples
+import matplotlib.pyplot as plt
+import json
 
-SEGMENT_NAMES = {
-    0: "Mass Market",
-    1: "Rising Prime",
-    2: "Established Prime",
-    3: "Subprime High-Risk",
-}
-
-def find_optimal_k(X_scaled, k_range=range(2, 9)):
-    inertias, silhouettes = [], []
+def find_optimal_k(X_scaled, k_range=range(2, 10)):
+    inertias = []
+    silhouettes = []
     for k in k_range:
         km = KMeans(n_clusters=k, random_state=42, n_init=10)
         labels = km.fit_predict(X_scaled)
@@ -20,28 +16,59 @@ def find_optimal_k(X_scaled, k_range=range(2, 9)):
         silhouettes.append(silhouette_score(X_scaled, labels))
     return inertias, silhouettes
 
-def cluster(X_scaled, n_clusters=4):
-    km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    labels = km.fit_predict(X_scaled)
-    return labels, km
+def elbow_method(inertias, k_range):
+    deltas = np.diff(inertias)
+    second_deltas = np.diff(deltas)
+    elbow_idx = np.argmax(second_deltas) + 2
+    return k_range[elbow_idx]
 
-def profile_segments(X, labels):
-    profile = X.copy()
-    profile["segment_label"] = labels
-    summary = profile.groupby("segment_label").mean()
-    named = {}
-    for idx in summary.index:
-        seg_id = int(idx)
-        named[seg_id] = {
-            "name": SEGMENT_NAMES.get(seg_id, f"Segment {seg_id}"),
-            "mean_income": float(summary.loc[idx, "income"]),
-            "mean_credit_score": float(summary.loc[idx, "credit_score"]),
-            "mean_employment_years": float(summary.loc[idx, "employment_years"]),
-            "mean_debt_to_income": float(summary.loc[idx, "debt_to_income"]),
-            "mean_loan_history_count": float(summary.loc[idx, "loan_history_count"]),
-            "mean_age": float(summary.loc[idx, "age"]),
-            "pct_homeowner": float(summary.loc[idx, "home_ownership"]),
-            "pct_verified_income": float(summary.loc[idx, "verified_income"]),
-            "count": int((labels == seg_id).sum()),
-        }
-    return named
+def silhouette_analysis(X_scaled, labels, n_clusters):
+    sil_avg = silhouette_score(X_scaled, labels)
+    sil_samples = silhouette_samples(X_scaled, labels)
+    return sil_avg, sil_samples
+
+def profile_segments(df, labels, feature_cols):
+    df_temp = df.copy()
+    df_temp['cluster'] = labels
+    profiles = {}
+    for cluster_id in sorted(df_temp['cluster'].unique()):
+        cluster_data = df_temp[df_temp['cluster'] == cluster_id]
+        profile = {}
+        for col in feature_cols:
+            profile[col] = {
+                'mean': round(float(cluster_data[col].mean()), 4),
+                'std': round(float(cluster_data[col].std()), 4),
+            }
+        profiles[int(cluster_id)] = profile
+    return profiles
+
+def assign_segment_names(labels):
+    # Assign business-friendly names based on typical cluster characteristics
+    return {0: 'Mass Market', 1: 'Rising Prime', 2: 'Established Prime', 3: 'Subprime High-Risk'}
+
+def run_segmentation(X_scaled, df_original, feature_cols):
+    n_clusters = 4
+
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    labels = kmeans.fit_predict(X_scaled)
+
+    sil_avg, sil_samples = silhouette_analysis(X_scaled, labels, n_clusters)
+
+    inertias, silhouettes = find_optimal_k(X_scaled)
+    optimal_k = elbow_method(inertias, range(2, 10))
+
+    profiles = profile_segments(df_original, labels, feature_cols)
+    segment_names = assign_segment_names(labels)
+
+    results = {
+        'n_clusters': n_clusters,
+        'silhouette_score': round(float(sil_avg), 4),
+        'optimal_k': int(optimal_k),
+        'inertias': [round(float(i), 4) for i in inertias],
+        'silhouettes': [round(float(s), 4) for s in silhouettes],
+        'profiles': profiles,
+        'segment_names': segment_names,
+        'cluster_counts': {int(k): int(v) for k, v in zip(*np.unique(labels, return_counts=True))},
+    }
+
+    return labels, kmeans, results

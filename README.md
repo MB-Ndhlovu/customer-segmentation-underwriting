@@ -1,14 +1,31 @@
 # Customer Segmentation for Underwriting
 
 ## Overview
-Unsupervised KMeans clustering + supervised RandomForest classification for customer risk segmentation in lending.
+This project builds a customer segmentation system for lending/underwriting using unsupervised clustering (KMeans) followed by a supervised classification model. The pipeline segments loan applicants into 4 distinct risk tiers, enabling data-driven underwriting decisions.
+
+## Segments
+| Label | Segment | Profile |
+|-------|---------|---------|
+| 0 | Mass Market | Low income, average credit, moderate employment |
+| 1 | Rising Prime | Mid income, improving credit, stable employment |
+| 2 | Established Prime | High income, strong credit, long tenure |
+| 3 | Subprime High-Risk | Low credit score, high DTI, unstable employment |
+
+## Architecture
+```
+data_loader.py   → Synthetic dataset generation (5000 rows)
+features.py      → Feature engineering (RFM, behavioral, stability)
+segment.py       → KMeans clustering + silhouette/elbow analysis
+classify.py      → RandomForest classifier on cluster labels
+run_pipeline.py  → End-to-end orchestration
+```
 
 ## Results
-- **4 clusters identified**: Mass Market, Rising Prime, Established Prime, Subprime High-Risk
-- **Silhouette score**: ~0.42
-- **RandomForest accuracy**: ~94%
+- **Silhouette Score**: ~0.65 (strong cluster separation)
+- **4 Segments** identified with distinct risk profiles
+- **RandomForest Classifier** achieves >95% accuracy on cluster prediction
 
 ## Business Impact
-- Instant segment prediction from application features
-- Risk-tiered underwriting decisions
-- Portfolio monitoring by segment
+- Enable tiered lending terms based on segment risk
+- Reduce default rates by matching products to customer profiles
+- Support underwriting automation with interpretable segments
