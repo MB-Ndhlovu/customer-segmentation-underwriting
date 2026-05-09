@@ -1,94 +1,91 @@
+"""Execute full customer segmentation pipeline."""
+
 import json
+import sys
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
 
-from src.data_loader import load_data
-from src.features import build_features, encode_categorical, compute_rfm_features, compute_behavioral_features, compute_stability_features
-from src.segment import run_segmentation
-from src.classify import train_classifier
+from src.data_loader import generate_customer_data
+from src.features import build_features, FEATURE_COLS
+from src.segment import run_segmentation, SEGMENT_NAMES
+from src.classify import train_classifier, APP_FEATURES
 
-def run_pipeline():
+
+def main():
     print("=" * 60)
-    print("Customer Segmentation Pipeline — Underwriting")
+    print("CUSTOMER SEGMENTATION FOR UNDERWRITING — PIPELINE")
     print("=" * 60)
 
-    # 1. Load data
-    print("\n[1/5] Loading data...")
-    df = load_data()
-    print(f"  Loaded {len(df)} records with columns: {list(df.columns)}")
-    segment_counts = df['segment_label'].value_counts().sort_index().to_dict()
-    print(f"  Segment distribution: {segment_counts}")
+    print("\n[1/5] Generating 5000 synthetic customer records...")
+    df = generate_customer_data(n=5000, seed=42)
+    print(f"      Shape: {df.shape}")
+    print(f"      Segments: {df['segment_label'].value_counts().sort_index().to_dict()}")
 
-    # 2. Build features
-    print("\n[2/5] Engineering features...")
-    df_enc = encode_categorical(df)
-    df_feat = df_enc.copy()
-    df_feat = compute_rfm_features(df_feat)
-    df_feat = compute_behavioral_features(df_feat)
-    df_feat = compute_stability_features(df_feat)
-    X, y = build_features(df)
+    print("\n[2/5] Building features (RFM, behavioural, stability)...")
+    df = build_features(df)
+    print(f"      Total features: {len(FEATURE_COLS)}")
 
-    feature_cols = list(X.columns)
-    print(f"  Built {len(feature_cols)} features: {feature_cols}")
+    print("\n[3/5] Running KMeans segmentation (k=4)...")
+    seg_result = run_segmentation(df, FEATURE_COLS, n_clusters=4)
+    labels = seg_result["cluster_labels"]
+    print(f"      Silhouette score: {seg_result['silhouette_at_k4']}")
+    print(f"      Elbow inertias: {seg_result['inertias']}")
 
-    # Add engineered columns to df_feat for profiling
-    for col in feature_cols:
-        if col not in df_feat.columns:
-            df_feat[col] = X[col]
+    print("\n[4/5] Training RandomForestClassifier on cluster labels...")
+    clf_result = train_classifier(df, labels)
+    print(f"      Test accuracy: {clf_result['accuracy']}")
 
-    # 3. Scale features
-    print("\n[3/5] Scaling features...")
-    scaler = StandardScaler()
-    X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=feature_cols)
-    print(f"  Scaled: mean={X_scaled.mean().mean():.4f}, std={X_scaled.std().mean():.4f}")
+    print("\n[5/5] Profiling segments...")
+    for p in seg_result["profiles"]:
+        print(
+            f"      [{p['segment_id']}] {p['segment_name']}: "
+            f"n={p['count']} ({p['pct']}%) | "
+            f"income=${p['income_mean']:,.0f} | "
+            f"credit={p['credit_score_mean']} | "
+            f"DTI={p['debt_to_income_mean']:.2f} | "
+            f"verified={p['verified_income_pct']}%"
+        )
 
-    # 4. Run segmentation
-    print("\n[4/5] Running KMeans segmentation...")
-    labels, kmeans_model, seg_results = run_segmentation(X_scaled, df_feat, feature_cols)
-    print(f"  Clusters: {seg_results['n_clusters']}")
-    print(f"  Silhouette Score: {seg_results['silhouette_score']}")
-    print(f"  Optimal K (elbow): {seg_results['optimal_k']}")
-    print(f"  Cluster distribution: {seg_results['cluster_counts']}")
-
-    seg_names = seg_results['segment_names']
-    for cluster_id, name in seg_names.items():
-        print(f"    Cluster {cluster_id} → {name}")
-
-    # 5. Train classifier
-    print("\n[5/5] Training RandomForest classifier...")
-    clf, clf_results = train_classifier(X, labels)
-    print(f"  Train accuracy: {clf_results['train_accuracy']}")
-    print(f"  Test accuracy:  {clf_results['test_accuracy']}")
-    print(f"  CV mean score:   {clf_results['cv_mean']} ± {clf_results['cv_std']}")
-
-    top_features = sorted(
-        clf_results['feature_importances'].items(),
-        key=lambda x: x[1],
-        reverse=True
-    )[:5]
-    print("  Top 5 features by importance:")
-    for feat, imp in top_features:
-        print(f"    {feat}: {imp}")
-
-    # Build final results
-    results = {
-        'segmentation': seg_results,
-        'classification': clf_results,
-        'feature_columns': feature_cols,
-        'n_samples': len(df),
+    output = {
+        "n_records": 5000,
+        "n_features": len(FEATURE_COLS),
+        "segmentation": {
+            "k_used": seg_result["k_used"],
+            "silhouette_score": seg_result["silhouette_at_k4"],
+            "inertias": seg_result["inertias"],
+            "silhouettes": seg_result["silhouettes"],
+            "profiles": seg_result["profiles"],
+        },
+        "classification": {
+            "accuracy": clf_result["accuracy"],
+            "feature_importances": clf_result["feature_importances"],
+        },
     }
 
-    # Save results
-    output_path = '/home/workspace/Projects/customer-segmentation-underwriting/reports/segmentation_results.json'
-    with open(output_path, 'w') as f:
-        json.dump(results, f, indent=2, default=str)
+    reports_dir = "/home/workspace/Projects/customer-segmentation-underwriting/reports"
+    out_path = f"{reports_dir}/segmentation_results.json"
+    with open(out_path, "w") as f:
+        json.dump(output, f, indent=2)
+    print(f"\n[OUTPUT] Saved to {out_path}")
 
-    print(f"\n✓ Results saved to {output_path}")
     print("\n" + "=" * 60)
-    print("Pipeline complete.")
+    print("CLASSIFICATION REPORT")
+    print("=" * 60)
+    print(clf_result["classification_report"])
+
+    print("\nFEATURE IMPORTANCES")
+    print("-" * 40)
+    for feat, imp in sorted(
+        clf_result["feature_importances"].items(), key=lambda x: -x[1]
+    ):
+        bar = "█" * int(imp * 50)
+        print(f"  {feat:<30} {imp:.4f} {bar}")
+
+    print("\n" + "=" * 60)
+    print("PIPELINE COMPLETE")
     print("=" * 60)
 
-    return results
+    return output
 
-if __name__ == '__main__':
-    run_pipeline()
+
+if __name__ == "__main__":
+    result = main()
