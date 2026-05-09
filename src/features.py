@@ -1,64 +1,76 @@
-"""Feature engineering for customer segmentation."""
+"""
+Feature engineering for customer segmentation.
+RFM features: Recency, Frequency, Monetary (adapted for lending context)
+Behavioral features: credit utilization patterns, loan behavior
+Stability features: employment tenure, income verification, home ownership
+"""
 
-import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+import numpy as np
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Create RFM, behavioral, and stability features from raw application data."""
-    X = df[[
-        "income", "credit_score", "employment_years",
-        "debt_to_income", "loan_history_count", "age",
-        "home_ownership", "verified_income"
-    ]].copy()
+    """
+    Engineer features from raw customer data.
+    Returns DataFrame with all features ready for clustering.
+    """
+    f = pd.DataFrame()
 
-    # RFM-equivalent features (proxy for recency/frequency via available signals)
-    # Recency proxy: credit_score trend (higher score = more recent activity)
-    X["credit_score_norm"] = X["credit_score"] / 850
+    # --- RFM-adjacent features ---
+    # Frequency: loan_history_count is already a proxy for frequency
+    f["loan_frequency"] = df["loan_history_count"]
 
-    # Frequency proxy: loan history density (loans per year of credit history)
-    X["loan_frequency"] = X["loan_history_count"] / (X["employment_years"] + 0.5)
+    # Monetary: income proxies spending capacity
+    f["income_capacity"] = df["income"]
 
-    # Monetary proxy: income per age (proxy for earnings trajectory)
-    X["income_per_age"] = X["income"] / X["age"]
+    # Recency proxy: younger borrowers with short employment = newer customers
+    f["recency_proxy"] = 1 / (df["age"] + 1)
 
-    # Behavioral features
-    # Credit utilization signal (high loan count + low score = over-leveraged)
-    X["leverage_signal"] = X["loan_history_count"] * (1 - X["credit_score_norm"])
+    # --- Behavioral features ---
+    # Credit risk indicator
+    f["credit_risk_score"] = 850 - df["credit_score"]
 
-    # DTI severity (quadratic to weight high DTI customers)
-    X["dti_severity"] = X["debt_to_income"] ** 1.5
+    # Debt burden
+    f["debt_burden"] = df["debt_to_income"]
 
-    # Stability features
-    # Employment stability ratio (longer tenure = more stable)
-    X["employment_stability"] = X["employment_years"] / (X["age"] - 18 + 1)
+    # Loan density (loans per year of employment)
+    f["loan_density"] = df["loan_history_count"] / (df["employment_years"] + 0.1)
 
-    # Home ownership as stability signal
-    X["home_stability"] = X["home_ownership"]
+    # Income stability ratio
+    f["income_stability"] = df["verified_income"] * np.log1p(df["income"])
 
-    # Income verification boost
-    X["verified_income_flag"] = X["verified_income"]
+    # --- Stability features ---
+    f["employment_stability"] = np.log1p(df["employment_years"])
 
-    # Affordability score (inverse of DTI, normalized)
-    X["affordability"] = (0.50 - X["debt_to_income"]) / 0.50
-    X["affordability"] = X["affordability"].clip(0, 1)
+    f["home_ownership_flag"] = df["home_ownership"]
 
-    return X
+    f["verified_income_flag"] = df["verified_income"]
+
+    # Combined stability score
+    f["stability_score"] = (
+        f["home_ownership_flag"] * 0.3 +
+        f["verified_income_flag"] * 0.3 +
+        (f["employment_stability"] / 5) * 0.4
+    ).clip(0, 1)
+
+    # Age bracket feature
+    f["age_bracket"] = pd.cut(df["age"], bins=[0, 25, 35, 50, 100], labels=[0, 1, 2, 3]).astype(int)
+
+    # Income tier
+    f["income_tier"] = pd.cut(
+        df["income"],
+        bins=[0, 35000, 60000, 100000, np.inf],
+        labels=[0, 1, 2, 3]
+    ).astype(int)
+
+    return f
 
 
-def scale_features(X: pd.DataFrame) -> tuple:
-    """Standardize features and return scaler for later inverse-transform."""
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    return X_scaled, scaler
-
-
-if __name__ == "__main__":
-    from data_loader import generate_customer_data
-
-    df = generate_customer_data()
-    X = build_features(df)
-    print("Feature columns:", X.columns.tolist())
-    print("\nFeature stats:")
-    print(X.describe().T[["mean", "std", "min", "max"]])
+def get_feature_names() -> list:
+    """Return list of all engineered feature names."""
+    return [
+        "loan_frequency", "income_capacity", "recency_proxy",
+        "credit_risk_score", "debt_burden", "loan_density",
+        "income_stability", "employment_stability", "home_ownership_flag",
+        "verified_income_flag", "stability_score", "age_bracket", "income_tier"
+    ]

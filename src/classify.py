@@ -1,103 +1,88 @@
-"""Train supervised RandomForest classifier on cluster labels."""
+"""
+Supervised classification of customer segments.
+Trains RandomForestClassifier on cluster labels from KMeans.
+Enables real-time segment prediction from application features.
+"""
 
-import json
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import (
-    classification_report, confusion_matrix,
-    accuracy_score, f1_score, precision_score, recall_score
-)
-import joblib
+from sklearn.metrics import classification_report, accuracy_score
+import json
 
 
-FEATURE_COLS = [
-    "income", "credit_score", "employment_years",
-    "debt_to_income", "loan_history_count", "age",
-    "home_ownership", "verified_income"
-]
-
-
-def train_classifier(X_raw: pd.DataFrame, labels: np.ndarray):
-    """Train RandomForest on cluster labels and return model + metrics."""
-    X = X_raw[FEATURE_COLS].copy()
-
+def train_classifier(X, y, test_size: float = 0.2, random_state: int = 42):
+    """
+    Train RandomForest classifier on cluster labels.
+    Returns model, metrics, and feature importances.
+    """
     X_train, X_test, y_train, y_test = train_test_split(
-        X, labels, test_size=0.2, random_state=42, stratify=labels
+        X, y, test_size=test_size, random_state=random_state, stratify=y
     )
 
     clf = RandomForestClassifier(
         n_estimators=200,
-        max_depth=12,
+        max_depth=10,
         min_samples_split=5,
         min_samples_leaf=2,
-        random_state=42,
-        n_jobs=-1
+        random_state=random_state,
+        n_jobs=-1,
+        class_weight="balanced"
     )
-    clf.fit(X_train, y_train)
 
+    clf.fit(X_train, y_train)
     y_pred = clf.predict(X_test)
 
-    acc = accuracy_score(y_test, y_pred)
-    f1 = f1_score(y_test, y_pred, average="weighted")
-    prec = precision_score(y_test, y_pred, average="weighted")
-    rec = recall_score(y_test, y_pred, average="weighted")
+    accuracy = accuracy_score(y_test, y_pred)
+    report = classification_report(y_test, y_pred, output_dict=True)
 
-    print("\n" + "=" * 60)
-    print("CLASSIFICATION REPORT")
-    print("=" * 60)
-    print(f"Accuracy:  {acc:.4f}")
-    print(f"F1 Score:  {f1:.4f}")
-    print(f"Precision: {prec:.4f}")
-    print(f"Recall:    {rec:.4f}")
-    print("\nConfusion Matrix:")
-    cm = confusion_matrix(y_test, y_pred)
-    print(cm)
-    print("\nPer-class report:")
-    print(classification_report(y_test, y_pred, target_names=[
-        "Mass Market", "Rising Prime", "Established Prime", "Subprime High-Risk"
-    ]))
-
-    # Feature importance
-    importances = pd.Series(clf.feature_importances_, index=FEATURE_COLS).sort_values(ascending=False)
-    print("Feature Importances:")
-    print(importances.round(4).to_string())
-
-    metrics = {
-        "accuracy": float(acc),
-        "f1_weighted": float(f1),
-        "precision_weighted": float(prec),
-        "recall_weighted": float(rec),
-        "confusion_matrix": cm.tolist(),
-        "feature_importance": importances.round(4).to_dict(),
+    importances = {
+        f"feature_{i}": float(v)
+        for i, v in enumerate(clf.feature_importances_)
     }
 
-    return clf, metrics
+    metrics = {
+        "accuracy": float(accuracy),
+        "classification_report": report,
+        "n_train": len(X_train),
+        "n_test": len(X_test)
+    }
+
+    return clf, metrics, importances
 
 
-def predict_segment(clf, applicant: dict):
-    """Predict segment for a single applicant dict."""
-    import numpy as np
-    vector = np.array([[
-        applicant["income"], applicant["credit_score"],
-        applicant["employment_years"], applicant["debt_to_income"],
-        applicant["loan_history_count"], applicant["age"],
-        applicant["home_ownership"], applicant["verified_income"]
-    ]])
-    label = int(clf.predict(vector)[0])
-    return label
+def predict_segment(clf, X):
+    """Predict segment for new application data."""
+    return clf.predict(X)
+
+
+def cross_validate(X, y, cv: int = 5):
+    """Run cross-validation on the classifier."""
+    from sklearn.model_selection import cross_val_score
+    clf = RandomForestClassifier(
+        n_estimators=200, max_depth=10, random_state=42,
+        n_jobs=-1, class_weight="balanced"
+    )
+    scores = cross_val_score(clf, X, y, cv=cv, scoring="accuracy")
+    return {
+        "mean_accuracy": float(scores.mean()),
+        "std_accuracy": float(scores.std()),
+        "cv_folds": cv
+    }
 
 
 if __name__ == "__main__":
-    from data_loader import generate_customer_data
-    from features import build_features, scale_features
-    from segment import fit_kmeans
+    from .data_loader import generate_customer_data, get_feature_columns
+    from sklearn.preprocessing import StandardScaler
 
     df = generate_customer_data()
-    X_feat = build_features(df)
-    X_scaled, _ = scale_features(X_feat)
-    _, labels = fit_kmeans(X_scaled)
+    X = df[get_feature_columns()].values
+    y = df["segment_label"].values
 
-    clf, metrics = train_classifier(df, labels)
-    print("\nClassifier trained successfully.")
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    clf, metrics, imp = train_classifier(X_scaled, y)
+    print(f"Accuracy: {metrics['accuracy']:.4f}")
+    print(classification_report(y, clf.predict(X_scaled)))

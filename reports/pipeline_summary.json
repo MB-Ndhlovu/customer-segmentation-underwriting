@@ -1,17 +1,19 @@
 {
-  "optimal_k": 4,
-  "silhouette_scores_by_k": [
-    0.2911437018769241,
-    0.22035635041418428,
-    0.21905577673685303,
-    0.22596150198652903,
-    0.22575793211671202,
-    0.23622936852783033,
-    0.20989052281092535,
-    0.21051269867857517
-  ],
-  "segment_profiles": [
-    {
+  "n_samples": 5000,
+  "target_k": 4,
+  "silhouette_at_target_k": 0.2191,
+  "advisory_silhouette_map": {
+    "2": 0.2911,
+    "3": 0.2204,
+    "4": 0.2191,
+    "5": 0.226,
+    "6": 0.2258,
+    "7": 0.2362,
+    "8": 0.2099,
+    "9": 0.2105
+  },
+  "segments": {
+    "Mass Market": {
       "segment_id": 0,
       "segment_name": "Mass Market",
       "size": 1299,
@@ -25,7 +27,7 @@
       "home_ownership_rate": 0.126,
       "verified_income_rate": 0.169
     },
-    {
+    "Rising Prime": {
       "segment_id": 1,
       "segment_name": "Rising Prime",
       "size": 1109,
@@ -39,7 +41,7 @@
       "home_ownership_rate": 0.43,
       "verified_income_rate": 0.0
     },
-    {
+    "Established Prime": {
       "segment_id": 2,
       "segment_name": "Established Prime",
       "size": 1207,
@@ -53,7 +55,7 @@
       "home_ownership_rate": 0.836,
       "verified_income_rate": 0.931
     },
-    {
+    "Subprime High-Risk": {
       "segment_id": 3,
       "segment_name": "Subprime High-Risk",
       "size": 1385,
@@ -67,5 +69,11 @@
       "home_ownership_rate": 0.399,
       "verified_income_rate": 1.0
     }
-  ]
+  },
+  "classifier_accuracy": 0.911,
+  "classifier_cv": {
+    "mean_accuracy": 0.9042,
+    "std_accuracy": 0.005,
+    "cv_folds": 5
+  }
 }
