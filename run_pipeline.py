@@ -1,91 +1,109 @@
-"""Execute full customer segmentation pipeline."""
-
 import json
-import sys
-import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
 
-from src.data_loader import generate_customer_data
-from src.features import build_features, FEATURE_COLS
-from src.segment import run_segmentation, SEGMENT_NAMES
-from src.classify import train_classifier, APP_FEATURES
+from src.data_loader import load_data
+from src.features import build_features, get_feature_columns
+from src.segment import fit_kmeans, profile_segments, SEGMENT_NAMES
+from src.classify import train_classifier
 
 
-def main():
+def run_pipeline():
     print("=" * 60)
     print("CUSTOMER SEGMENTATION FOR UNDERWRITING — PIPELINE")
     print("=" * 60)
 
-    print("\n[1/5] Generating 5000 synthetic customer records...")
-    df = generate_customer_data(n=5000, seed=42)
-    print(f"      Shape: {df.shape}")
-    print(f"      Segments: {df['segment_label'].value_counts().sort_index().to_dict()}")
+    # 1. Load data
+    print("\n[1/5] Loading synthetic customer data (n=5000)...")
+    df = load_data()
+    print(f"  Rows: {len(df)}")
+    print(f"  Columns: {list(df.columns)}")
+    print(f"  Segment distribution:\n{df['segment_label'].value_counts().sort_index().to_string()}")
 
-    print("\n[2/5] Building features (RFM, behavioural, stability)...")
-    df = build_features(df)
-    print(f"      Total features: {len(FEATURE_COLS)}")
+    # 2. Feature engineering
+    print("\n[2/5] Engineering features...")
+    df_fe = build_features(df)
+    feature_cols = get_feature_columns()
+    X = df_fe[feature_cols].values
+    print(f"  Features: {feature_cols}")
 
-    print("\n[3/5] Running KMeans segmentation (k=4)...")
-    seg_result = run_segmentation(df, FEATURE_COLS, n_clusters=4)
-    labels = seg_result["cluster_labels"]
-    print(f"      Silhouette score: {seg_result['silhouette_at_k4']}")
-    print(f"      Elbow inertias: {seg_result['inertias']}")
+    # 3. Scale + cluster
+    print("\n[3/5] Scaling features and running KMeans (k=4)...")
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
 
-    print("\n[4/5] Training RandomForestClassifier on cluster labels...")
-    clf_result = train_classifier(df, labels)
-    print(f"      Test accuracy: {clf_result['accuracy']}")
+    km, labels = fit_kmeans(X_scaled, n_clusters=4)
+    print(f"  Inertia: {km.inertia_:.2f}")
 
-    print("\n[5/5] Profiling segments...")
-    for p in seg_result["profiles"]:
-        print(
-            f"      [{p['segment_id']}] {p['segment_name']}: "
-            f"n={p['count']} ({p['pct']}%) | "
-            f"income=${p['income_mean']:,.0f} | "
-            f"credit={p['credit_score_mean']} | "
-            f"DTI={p['debt_to_income_mean']:.2f} | "
-            f"verified={p['verified_income_pct']}%"
-        )
+    # Profile clusters
+    profiles = profile_segments(df_fe, labels, feature_cols)
 
-    output = {
-        "n_records": 5000,
-        "n_features": len(FEATURE_COLS),
-        "segmentation": {
-            "k_used": seg_result["k_used"],
-            "silhouette_score": seg_result["silhouette_at_k4"],
-            "inertias": seg_result["inertias"],
-            "silhouettes": seg_result["silhouettes"],
-            "profiles": seg_result["profiles"],
-        },
-        "classification": {
-            "accuracy": clf_result["accuracy"],
-            "feature_importances": clf_result["feature_importances"],
-        },
+    # Map clusters to business names via dominant original segment
+    from scipy.stats import mode
+    cluster_to_segment = {}
+    for c in sorted(profiles.keys()):
+        mask = labels == c
+        dominant = mode(df["segment_label"][mask], keepdims=False).mode
+        cluster_to_segment[c] = SEGMENT_NAMES[dominant]
+        profiles[c]["assigned_name"] = cluster_to_segment[c]
+
+    print("\n  Cluster profiles:")
+    for c, p in profiles.items():
+        print(f"  Cluster {c} ({cluster_to_segment[c]}):")
+        print(f"    count={p['count']}, income={p['mean_income']:,.0f}, "
+              f"credit={p['mean_credit_score']:.0f}, DTI={p['mean_dti']:.3f}")
+
+    # 4. Train RandomForest classifier
+    print("\n[4/5] Training RandomForest classifier on cluster labels...")
+    y = labels
+    clf, acc, report, importance = train_classifier(X, y, feature_cols)
+    print(f"  Test Accuracy: {acc:.4f}")
+    print("\n  Classification Report:")
+    print(report)
+
+    top_features = sorted(importance.items(), key=lambda x: -x[1])[:5]
+    print("  Top 5 predictive features:")
+    for fname, imp in top_features:
+        print(f"    {fname}: {imp:.4f}")
+
+    # 5. Save results
+    print("\n[5/5] Saving results to reports/segmentation_results.json...")
+    results = {
+        "n_samples": int(len(df)),
+        "n_features": len(feature_cols),
+        "features": feature_cols,
+        "cluster_profiles": {str(k): v for k, v in profiles.items()},
+        "kmeans_inertia": float(km.inertia_),
+        "classifier_accuracy": float(acc),
+        "classification_report": report,
+        "top_features": {k: float(v) for k, v in importance.items()},
+        "silhouette_approx": float(
+            __import__("sklearn.metrics").metrics.silhouette_score(
+                X_scaled, labels
+            )
+        ),
     }
 
-    reports_dir = "/home/workspace/Projects/customer-segmentation-underwriting/reports"
-    out_path = f"{reports_dir}/segmentation_results.json"
-    with open(out_path, "w") as f:
-        json.dump(output, f, indent=2)
-    print(f"\n[OUTPUT] Saved to {out_path}")
-
-    print("\n" + "=" * 60)
-    print("CLASSIFICATION REPORT")
-    print("=" * 60)
-    print(clf_result["classification_report"])
-
-    print("\nFEATURE IMPORTANCES")
-    print("-" * 40)
-    for feat, imp in sorted(
-        clf_result["feature_importances"].items(), key=lambda x: -x[1]
-    ):
-        bar = "█" * int(imp * 50)
-        print(f"  {feat:<30} {imp:.4f} {bar}")
+    import os
+    os.makedirs("reports", exist_ok=True)
+    with open("reports/segmentation_results.json", "w") as f:
+        json.dump(results, f, indent=2)
 
     print("\n" + "=" * 60)
     print("PIPELINE COMPLETE")
     print("=" * 60)
+    print(f"\nSilhouette Score: {results['silhouette_approx']:.4f}")
+    print(f"RandomForest Accuracy: {results['classifier_accuracy']:.4f}")
+    print(f"Results saved to reports/segmentation_results.json")
 
-    return output
+    # Return summary for Telegram message
+    return {
+        "silhouette": results["silhouette_approx"],
+        "accuracy": results["classifier_accuracy"],
+        "profiles": profiles,
+        "top_features": top_features,
+    }
 
 
 if __name__ == "__main__":
-    result = main()
+    summary = run_pipeline()

@@ -1,49 +1,59 @@
-"""Feature engineering: RFM, behavioural, and stability features."""
-
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
+def build_features(df):
+    """
+    Engineer RFM, behavioral, and stability features from raw customer data.
 
-    df["income_per_employment_year"] = (df["income"] / (df["employment_years"] + 1)).round(2)
+    RFM-style:
+      - income_per_employment_year
+      - credit_score_per_age_decade
 
-    df["credit_to_income_ratio"] = (df["credit_score"] / (df["income"] / 1000)).round(4)
+    Behavioral:
+      - loan_density (loans per employment year)
+      - debt_burden_score (DTI * loan_count)
 
-    df["loan_density"] = (df["loan_history_count"] / (df["age"] - 17)).clip(0, 1).round(4)
+    Stability:
+      - employment_stability (years / age_ratio)
+      - home_income_interaction
+    """
+    X = df.copy()
 
-    df["stability_score"] = (
-        (df["employment_years"] * 0.3)
-        + (df["verified_income"] * 0.3)
-        + (df["home_ownership"].isin([1, 2]).astype(float) * 0.2)
-        + ((df["credit_score"] - 300) / 550 * 0.2)
-    ).round(4)
+    # RFM-style features
+    X["income_per_emp_year"] = X["income"] / (X["employment_years"] + 0.5)
+    X["credit_per_age_decade"] = X["credit_score"] / ((X["age"] + 1) / 10)
 
-    df["debt_burden_flag"] = (df["debt_to_income"] > 0.36).astype(int)
+    # Behavioral
+    X["loan_density"] = X["loan_history_count"] / (X["employment_years"] + 0.5)
+    X["debt_burden_score"] = X["debt_to_income"] * (X["loan_history_count"] + 1)
 
-    df["credit_band"] = pd.cut(
-        df["credit_score"],
-        bins=[0, 580, 670, 740, 850],
-        labels=[0, 1, 2, 3],
-    ).astype(int)
+    # Stability
+    X["employment_stability"] = X["employment_years"] / (X["age"] + 1)
+    X["home_income_interaction"] = X["home_ownership"] * np.log1p(X["income"])
 
-    return df
+    # Verification signal
+    X["verification_bonus"] = X["verified_income"] * X["credit_score"] / 850
+
+    return X
 
 
-FEATURE_COLS = [
-    "income",
-    "credit_score",
-    "employment_years",
-    "debt_to_income",
-    "loan_history_count",
-    "age",
-    "home_ownership",
-    "verified_income",
-    "income_per_employment_year",
-    "credit_to_income_ratio",
-    "loan_density",
-    "stability_score",
-    "debt_burden_flag",
-    "credit_band",
-]
+def get_feature_columns():
+    """Columns used for clustering and classification."""
+    return [
+        "income",
+        "credit_score",
+        "employment_years",
+        "debt_to_income",
+        "loan_history_count",
+        "age",
+        "home_ownership",
+        "verified_income",
+        "income_per_emp_year",
+        "credit_per_age_decade",
+        "loan_density",
+        "debt_burden_score",
+        "employment_stability",
+        "home_income_interaction",
+        "verification_bonus",
+    ]
