@@ -1,76 +1,67 @@
-"""Feature engineering for customer segmentation: RFM, behavioral, stability features."""
-
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
 
-FEATURE_COLS = [
-    "income",
-    "credit_score",
-    "employment_years",
-    "debt_to_income",
-    "loan_history_count",
-    "age",
-    "home_ownership",
-    "verified_income",
-]
 
-# --- RFM-style features ---
-def rfm_features(df: pd.DataFrame) -> pd.DataFrame:
+def compute_rfm_features(df):
+    """RFM-style features derived from credit behavior."""
     df = df.copy()
-    # income per employment year — financial stability ratio
-    df["income_per_emp_year"] = (df["income"] / (df["employment_years"] + 0.01)).round(2)
-    # credit score normalised to 0-1
-    df["credit_normalised"] = ((df["credit_score"] - 300) / (850 - 300)).round(4)
+
+    # Recency proxy: inverse of loan recency (assumed uniform here as no timeline)
+    # Use credit score as a proxy for engagement quality
+    df["recency_score"] = (df["credit_score"] - 300) / (850 - 300)
+
+    # Frequency: loan history normalized
+    df["frequency_score"] = df["loan_history_count"] / df["loan_history_count"].max()
+
+    # Monetary: income per year of employment (stability proxy)
+    df["monetary_score"] = df["income"] / (df["employment_years"] + 1)
+
     return df
 
 
-# --- Behavioral features ---
-def behavioral_features(df: pd.DataFrame) -> pd.DataFrame:
+def compute_behavioral_features(df):
+    """Behavioral risk indicators."""
     df = df.copy()
-    # loan burden: how many loans relative to age (young person with many loans = risk)
-    df["loan_burden"] = (df["loan_history_count"] / (df["age"] - 17 + 1)).round(4)
-    # income stability proxy: employment years / age (higher = more stable career)
-    df["career_stability"] = (df["employment_years"] / (df["age"] - 17 + 1)).round(4)
-    # verified income flag multiplies credit quality
-    df["verified_credit_quality"] = (df["credit_normalised"] * df["verified_income"]).round(4)
+
+    # High DTI flag
+    df["high_dti_flag"] = (df["debt_to_income"] > 0.36).astype(int)
+
+    # Credit utilization proxy (lower credit score relative to income = higher utilization)
+    df["credit_to_income_ratio"] = df["credit_score"] / (df["income"] / 1000 + 1)
+
+    # Income stability index
+    df["income_stability"] = df["employment_years"] / (df["age"] - 18 + 1)
+    df["income_stability"] = df["income_stability"].clip(0, 1)
+
+    # Loan density (loans per year of employment)
+    df["loan_density"] = df["loan_history_count"] / (df["employment_years"] + 0.5)
+
     return df
 
 
-# --- Stability features ---
-def stability_features(df: pd.DataFrame) -> pd.DataFrame:
+def compute_stability_features(df):
+    """Employment and residency stability features."""
     df = df.copy()
-    # DTI risk buckets (high DTI = unstable)
-    df["dti_risk"] = (df["debt_to_income"] * 100).round(2)
-    # home ownership as stability anchor
-    df["home_stability_anchor"] = df["home_ownership"]
+
+    # Employment tenure bucket
+    df["employment_tenure_bucket"] = pd.cut(
+        df["employment_years"],
+        bins=[-1, 2, 5, 10, 100],
+        labels=[0, 1, 2, 3]
+    ).astype(int)
+
+    # Income per age (young but high income = exceptional)
+    df["income_age_ratio"] = df["income"] / df["age"]
+
+    # Home + verified income combo
+    df["home_verified_combo"] = df["home_ownership_status"] * df["verified_income"]
+
     return df
 
 
-# --- Derived features (no external data needed) ---
-def derive_features(df: pd.DataFrame) -> pd.DataFrame:
-    df = rfm_features(df)
-    df = behavioral_features(df)
-    df = stability_features(df)
+def build_features(df):
+    """Apply all feature engineering."""
+    df = compute_rfm_features(df)
+    df = compute_behavioral_features(df)
+    df = compute_stability_features(df)
     return df
-
-
-def get_feature_matrix(df: pd.DataFrame) -> pd.DataFrame:
-    """Return engineered feature matrix for clustering."""
-    df = derive_features(df)
-    feature_names = FEATURE_COLS + [
-        "income_per_emp_year",
-        "credit_normalised",
-        "loan_burden",
-        "career_stability",
-        "verified_credit_quality",
-        "dti_risk",
-        "home_stability_anchor",
-    ]
-    return df[feature_names]
-
-
-def scale_features(X: pd.DataFrame) -> tuple:
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    return X_scaled, scaler

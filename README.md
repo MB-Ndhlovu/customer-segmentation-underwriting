@@ -1,52 +1,32 @@
 # Customer Segmentation for Underwriting
 
-**Project 3 of the Actuarial AI Pipeline**
-
-Uses unsupervised clustering (KMeans) to segment loan applicants into 4 risk tiers, then trains a supervised classifier to predict segment membership from application features alone.
-
----
+ML pipeline that clusters 5,000 synthetic credit customers into 4 risk tiers and trains a supervised classifier to predict segment from application features.
 
 ## Segments
 
-| Label | Name | Profile |
-|---|---|---|
-| 0 | Mass Market | Low-mid income, average credit, moderate employment history |
-| 1 | Rising Prime | Mid-high income, good credit, stable employment, low DTI |
-| 2 | Established Prime | High income, excellent credit, long tenure, low risk |
-| 3 | Subprime High-Risk | Low income, poor credit, short employment, high DTI |
+| ID | Label | Profile |
+|----|-------|---------|
+| 0 | Mass Market | Young, low income, short employment, high DTI, low credit |
+| 1 | Rising Prime | Moderate income, improving credit, mid employment |
+| 2 | Established Prime | High income, high credit, long employment, home owners |
+| 3 | Subprime High-Risk | Low credit score, high DTI, verified income issues |
 
----
+## Pipeline
 
-## Architecture
+1. `src/data_loader.py` — generates 5,000 synthetic customer records
+2. `src/features.py` — RFM, behavioral, stability feature engineering
+3. `src/segment.py` — KMeans (k=4), silhouette analysis, elbow method, segment profiling
+4. `src/classify.py` — RandomForestClassifier trained on cluster labels
 
-```
-data_loader.py   → Synthetic dataset (5000 rows)
-       ↓
-features.py      → RFM, behavioral, stability feature engineering
-       ↓
-segment.py        → KMeans (k=4), Elbow method, Silhouette analysis, profiling
-       ↓
-classify.py       → RandomForestClassifier trained on cluster labels
-       ↓
-run_pipeline.py   → End-to-end execution + JSON report
+## Run
+
+```bash
+pip install -r requirements.txt
+python run_pipeline.py
 ```
 
----
+## Business Impact
 
-## Results
-
-- **Silhouette Score:** ~0.65–0.72 (strong cluster separation)
-- **RandomForest Accuracy:** ≥ 94% on held-out test set
-- Segment profiles align with real-world lending risk tiers
-
----
-
-## Files
-
-- `src/data_loader.py` — Generates 5000 synthetic customer records
-- `src/features.py` — Feature engineering pipeline
-- `src/segment.py` — KMeans clustering + evaluation
-- `src/classify.py` — Supervised segment classifier
-- `run_pipeline.py` — Orchestrates the full pipeline
-- `reports/segmentation_results.json` — Pipeline output and segment profiles
-- `requirements.txt` — Dependencies
+- Underwriters can route applications by predicted segment
+- Risk-based pricing becomes data-driven
+- Early identification of subprime applicants enables proactive counseling

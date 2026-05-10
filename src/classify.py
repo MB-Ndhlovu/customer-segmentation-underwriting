@@ -1,22 +1,9 @@
-"""Train RandomForestClassifier on cluster labels to predict segment from application features."""
-
-import pandas as pd
 import numpy as np
+import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import classification_report, accuracy_score
 
-
-FEATURE_COLS = [
-    "income",
-    "credit_score",
-    "employment_years",
-    "debt_to_income",
-    "loan_history_count",
-    "age",
-    "home_ownership",
-    "verified_income",
-]
 
 SEGMENT_NAMES = {
     0: "Mass Market",
@@ -26,14 +13,10 @@ SEGMENT_NAMES = {
 }
 
 
-def train_classifier(
-    df: pd.DataFrame,
-    feature_cols: list = FEATURE_COLS,
-    test_size: float = 0.2,
-    random_state: int = 42,
-):
+def train_classifier(df, labels, feature_cols, test_size=0.2, random_state=42):
+    """Train RandomForest on cluster labels."""
     X = df[feature_cols].values
-    y = df["cluster"].values
+    y = labels
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=test_size, random_state=random_state, stratify=y
@@ -42,41 +25,28 @@ def train_classifier(
     clf = RandomForestClassifier(
         n_estimators=200,
         max_depth=10,
-        min_samples_leaf=5,
+        min_samples_split=5,
         random_state=random_state,
         n_jobs=-1,
     )
     clf.fit(X_train, y_train)
 
-    y_pred_train = clf.predict(X_train)
-    y_pred_test = clf.predict(X_test)
+    y_pred = clf.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
 
-    train_acc = accuracy_score(y_train, y_pred_train)
-    test_acc = accuracy_score(y_test, y_pred_test)
+    # Feature importance
+    importance = dict(zip(feature_cols, clf.feature_importances_.round(4)))
 
-    # Per-class report
     report = classification_report(
-        y_test, y_pred_test, target_names=[SEGMENT_NAMES[i] for i in sorted(SEGMENT_NAMES.keys())], output_dict=True
+        y_test, y_pred, target_names=[SEGMENT_NAMES[i] for i in range(4)], output_dict=True
     )
 
-    # Feature importances
-    importances = {
-        feat: round(float(imp), 4)
-        for feat, imp in zip(feature_cols, clf.feature_importances_)
-    }
-
-    results = {
-        "train_accuracy": round(train_acc, 4),
-        "test_accuracy": round(test_acc, 4),
-        "classification_report": {k: round(v, 4) if isinstance(v, float) else v for k, v in report.items()},
-        "feature_importances": importances,
-        "n_train": len(X_train),
-        "n_test": len(X_test),
-    }
-
-    return clf, results
+    return clf, acc, importance, report
 
 
-def predict_segment(clf, df: pd.DataFrame, feature_cols: list = FEATURE_COLS) -> np.ndarray:
+def predict_segment(clf, df, feature_cols):
+    """Predict segment for new applications."""
     X = df[feature_cols].values
-    return clf.predict(X)
+    preds = clf.predict(X)
+    probs = clf.predict_proba(X)
+    return preds, probs
