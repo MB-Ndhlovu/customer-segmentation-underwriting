@@ -1,85 +1,118 @@
+"""Synthetic customer dataset generator for underwriting segmentation."""
+
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+
+# Segment definitions: (count, income_range, credit_range, emp_years_range, dti_range, loan_count_range, age_range, home_own_prob, verified_income_prob)
+SEGMENTS = {
+    0: {  # Mass Market
+        "count": 1600,
+        "income": (35000, 85000),
+        "credit_score": (620, 720),
+        "employment_years": (1, 8),
+        "debt_to_income": (0.15, 0.38),
+        "loan_history_count": (1, 5),
+        "age": (24, 45),
+        "home_ownership": 0.25,
+        "verified_income": 0.55,
+    },
+    1: {  # Rising Prime
+        "count": 1400,
+        "income": (70000, 140000),
+        "credit_score": (700, 800),
+        "employment_years": (3, 12),
+        "debt_to_income": (0.10, 0.30),
+        "loan_history_count": (1, 4),
+        "age": (28, 50),
+        "home_ownership": 0.55,
+        "verified_income": 0.80,
+    },
+    2: {  # Established Prime
+        "count": 1200,
+        "income": (110000, 250000),
+        "credit_score": (760, 850),
+        "employment_years": (8, 25),
+        "debt_to_income": (0.05, 0.22),
+        "loan_history_count": (0, 3),
+        "age": (35, 60),
+        "home_ownership": 0.85,
+        "verified_income": 0.95,
+    },
+    3: {  # Subprime High-Risk
+        "count": 800,
+        "income": (18000, 45000),
+        "credit_score": (480, 620),
+        "employment_years": (0, 3),
+        "debt_to_income": (0.35, 0.65),
+        "loan_history_count": (3, 10),
+        "age": (20, 40),
+        "home_ownership": 0.08,
+        "verified_income": 0.25,
+    },
+}
+
+SEGMENT_NAMES = {
+    0: "Mass Market",
+    1: "Rising Prime",
+    2: "Established Prime",
+    3: "Subprime High-Risk",
+}
+
+rng = np.random.default_rng(seed=42)
 
 
-def generate_synthetic_data(n=5000, seed=42):
-    """Generate 5,000 synthetic customer records across 4 distinct segments."""
-    np.random.seed(seed)
+def _clamp(val, lo, hi):
+    return max(lo, min(hi, val))
 
-    # Segment proportions
-    n0 = int(n * 0.35)  # Mass Market
-    n1 = int(n * 0.25)  # Rising Prime
-    n2 = int(n * 0.20)  # Established Prime
-    n3 = n - n0 - n1 - n2  # Subprime High-Risk
 
-    segments = [0] * n0 + [1] * n1 + [2] * n2 + [3] * n3
-    np.random.shuffle(segments)
+def generate(n_total: int = 5000, seed: int = 42) -> pd.DataFrame:
+    rng = np.random.default_rng(seed=seed)
+    rows = []
 
-    data = []
-    for seg in segments:
-        if seg == 0:  # Mass Market
-            income = np.random.normal(380_000, 80_000)
-            credit_score = np.random.normal(620, 60)
-            employment_years = np.random.exponential(4.0)
-            dti = np.random.beta(4, 6)
-            loan_count = np.random.poisson(2)
-            age = np.random.normal(35, 8)
-            home_owner = np.random.binomial(1, 0.45)
-            verified = np.random.binomial(1, 0.7)
+    # Distribute counts proportionally but fix to get exactly n_total
+    segment_counts = {k: v["count"] for k, v in SEGMENTS.items()}
+    # Slight random jitter so sum == n_total
+    scale = n_total / sum(segment_counts.values())
+    counts = {k: max(1, int(v * scale)) for k, v in segment_counts.items()}
+    # Correct rounding error
+    diff = n_total - sum(counts.values())
+    counts[0] += diff
 
-        elif seg == 1:  # Rising Prime
-            income = np.random.normal(650_000, 120_000)
-            credit_score = np.random.normal(700, 50)
-            employment_years = np.random.exponential(2.5)
-            dti = np.random.beta(3, 8)
-            loan_count = np.random.poisson(1)
-            age = np.random.normal(29, 5)
-            home_owner = np.random.binomial(1, 0.30)
-            verified = np.random.binomial(1, 0.80)
+    for seg_id, params in SEGMENTS.items():
+        n = counts[seg_id]
+        income = rng.integers(params["income"][0], params["income"][1] + 1, size=n)
+        credit = rng.integers(params["credit_score"][0], params["credit_score"][1] + 1, size=n)
+        emp = rng.uniform(params["employment_years"][0], params["employment_years"][1], size=n)
+        dti = rng.uniform(params["debt_to_income"][0], params["debt_to_income"][1], size=n)
+        loans = rng.integers(params["loan_history_count"][0], params["loan_history_count"][1] + 1, size=n)
+        age = rng.integers(params["age"][0], params["age"][1] + 1, size=n)
+        home_own = rng.binomial(1, params["home_ownership"], size=n)
+        verified = rng.binomial(1, params["verified_income"], size=n)
 
-        elif seg == 2:  # Established Prime
-            income = np.random.normal(950_000, 200_000)
-            credit_score = np.random.normal(780, 40)
-            employment_years = np.random.exponential(9.0)
-            dti = np.random.beta(2, 10)
-            loan_count = np.random.poisson(1)
-            age = np.random.normal(45, 8)
-            home_owner = np.random.binomial(1, 0.80)
-            verified = np.random.binomial(1, 0.95)
+        for i in range(n):
+            rows.append(
+                {
+                    "income": int(income[i]),
+                    "credit_score": int(credit[i]),
+                    "employment_years": round(emp[i], 2),
+                    "debt_to_income": round(dti[i], 4),
+                    "loan_history_count": int(loans[i]),
+                    "age": int(age[i]),
+                    "home_ownership": int(home_own[i]),
+                    "verified_income": int(verified[i]),
+                    "segment_label": seg_id,
+                    "segment_name": SEGMENT_NAMES[seg_id],
+                }
+            )
 
-        else:  # Subprime High-Risk
-            income = np.random.normal(180_000, 60_000)
-            credit_score = np.random.normal(500, 55)
-            employment_years = np.random.exponential(1.5)
-            dti = np.random.beta(7, 4)
-            loan_count = np.random.poisson(4)
-            age = np.random.normal(32, 9)
-            home_owner = np.random.binomial(1, 0.15)
-            verified = np.random.binomial(1, 0.40)
-
-        data.append({
-            "income": max(50_000, income),
-            "credit_score": min(850, max(300, credit_score)),
-            "employment_years": max(0, employment_years),
-            "debt_to_income": min(0.99, max(0.01, dti)),
-            "loan_history_count": max(0, loan_count),
-            "age": min(75, max(18, age)),
-            "home_ownership": home_owner,
-            "verified_income": verified,
-        })
-
-    df = pd.DataFrame(data)
-    df["segment_label"] = segments
+    df = pd.DataFrame(rows)
+    # Shuffle
+    df = df.sample(frac=1, random_state=seed).reset_index(drop=True)
     return df
 
 
-def load_data():
-    """Load or generate the customer dataset."""
-    return generate_synthetic_data(n=5000)
-
-
 if __name__ == "__main__":
-    df = load_data()
-    print(df.describe())
-    print("\nSegment distribution:\n", df["segment_label"].value_counts().sort_index())
+    df = generate()
+    print(df.head())
+    print("\nSegment distribution:")
+    print(df["segment_label"].value_counts().sort_index())

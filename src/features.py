@@ -1,59 +1,76 @@
+"""Feature engineering for customer segmentation: RFM, behavioral, stability features."""
+
 import numpy as np
 import pandas as pd
+from sklearn.preprocessing import StandardScaler
+
+FEATURE_COLS = [
+    "income",
+    "credit_score",
+    "employment_years",
+    "debt_to_income",
+    "loan_history_count",
+    "age",
+    "home_ownership",
+    "verified_income",
+]
+
+# --- RFM-style features ---
+def rfm_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    # income per employment year — financial stability ratio
+    df["income_per_emp_year"] = (df["income"] / (df["employment_years"] + 0.01)).round(2)
+    # credit score normalised to 0-1
+    df["credit_normalised"] = ((df["credit_score"] - 300) / (850 - 300)).round(4)
+    return df
 
 
-def build_features(df):
-    """
-    Engineer RFM, behavioral, and stability features from raw customer data.
-
-    RFM-style:
-      - income_per_employment_year
-      - credit_score_per_age_decade
-
-    Behavioral:
-      - loan_density (loans per employment year)
-      - debt_burden_score (DTI * loan_count)
-
-    Stability:
-      - employment_stability (years / age_ratio)
-      - home_income_interaction
-    """
-    X = df.copy()
-
-    # RFM-style features
-    X["income_per_emp_year"] = X["income"] / (X["employment_years"] + 0.5)
-    X["credit_per_age_decade"] = X["credit_score"] / ((X["age"] + 1) / 10)
-
-    # Behavioral
-    X["loan_density"] = X["loan_history_count"] / (X["employment_years"] + 0.5)
-    X["debt_burden_score"] = X["debt_to_income"] * (X["loan_history_count"] + 1)
-
-    # Stability
-    X["employment_stability"] = X["employment_years"] / (X["age"] + 1)
-    X["home_income_interaction"] = X["home_ownership"] * np.log1p(X["income"])
-
-    # Verification signal
-    X["verification_bonus"] = X["verified_income"] * X["credit_score"] / 850
-
-    return X
+# --- Behavioral features ---
+def behavioral_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    # loan burden: how many loans relative to age (young person with many loans = risk)
+    df["loan_burden"] = (df["loan_history_count"] / (df["age"] - 17 + 1)).round(4)
+    # income stability proxy: employment years / age (higher = more stable career)
+    df["career_stability"] = (df["employment_years"] / (df["age"] - 17 + 1)).round(4)
+    # verified income flag multiplies credit quality
+    df["verified_credit_quality"] = (df["credit_normalised"] * df["verified_income"]).round(4)
+    return df
 
 
-def get_feature_columns():
-    """Columns used for clustering and classification."""
-    return [
-        "income",
-        "credit_score",
-        "employment_years",
-        "debt_to_income",
-        "loan_history_count",
-        "age",
-        "home_ownership",
-        "verified_income",
+# --- Stability features ---
+def stability_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    # DTI risk buckets (high DTI = unstable)
+    df["dti_risk"] = (df["debt_to_income"] * 100).round(2)
+    # home ownership as stability anchor
+    df["home_stability_anchor"] = df["home_ownership"]
+    return df
+
+
+# --- Derived features (no external data needed) ---
+def derive_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = rfm_features(df)
+    df = behavioral_features(df)
+    df = stability_features(df)
+    return df
+
+
+def get_feature_matrix(df: pd.DataFrame) -> pd.DataFrame:
+    """Return engineered feature matrix for clustering."""
+    df = derive_features(df)
+    feature_names = FEATURE_COLS + [
         "income_per_emp_year",
-        "credit_per_age_decade",
-        "loan_density",
-        "debt_burden_score",
-        "employment_stability",
-        "home_income_interaction",
-        "verification_bonus",
+        "credit_normalised",
+        "loan_burden",
+        "career_stability",
+        "verified_credit_quality",
+        "dti_risk",
+        "home_stability_anchor",
     ]
+    return df[feature_names]
+
+
+def scale_features(X: pd.DataFrame) -> tuple:
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    return X_scaled, scaler
