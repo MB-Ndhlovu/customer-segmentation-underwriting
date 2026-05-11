@@ -1,80 +1,85 @@
-"""Synthetic customer dataset for underwriting segmentation."""
 import numpy as np
 import pandas as pd
 
 np.random.seed(42)
 
+SEGMENT_PARAMS = {
+    0: {
+        "income": (28000, 55000),
+        "credit_score": (580, 680),
+        "employment_years": (1, 6),
+        "debt_to_income": (0.15, 0.38),
+        "loan_history_count": (0, 4),
+        "age": (20, 34),
+        "home_ownership": 0.25,
+        "verified_income": 0.60,
+    },
+    1: {
+        "income": (55000, 90000),
+        "credit_score": (660, 740),
+        "employment_years": (4, 12),
+        "debt_to_income": (0.10, 0.30),
+        "loan_history_count": (2, 7),
+        "age": (27, 42),
+        "home_ownership": 0.50,
+        "verified_income": 0.82,
+    },
+    2: {
+        "income": (90000, 200000),
+        "credit_score": (720, 840),
+        "employment_years": (8, 30),
+        "debt_to_income": (0.05, 0.22),
+        "loan_history_count": (4, 15),
+        "age": (35, 62),
+        "home_ownership": 0.80,
+        "verified_income": 0.95,
+    },
+    3: {
+        "income": (18000, 42000),
+        "credit_score": (480, 610),
+        "employment_years": (0, 3),
+        "debt_to_income": (0.35, 0.65),
+        "loan_history_count": (0, 2),
+        "age": (18, 38),
+        "home_ownership": 0.10,
+        "verified_income": 0.35,
+    },
+}
 
-def generate_customer_data(n: int = 5000) -> pd.DataFrame:
-    """Generate n synthetic customer records."""
-    segments = []
-    for _ in range(n):
-        r = np.random.rand()
-        if r < 0.35:
-            segments.append(0)   # Mass Market
-        elif r < 0.60:
-            segments.append(1)   # Rising Prime
-        elif r < 0.80:
-            segments.append(2)   # Established Prime
-        else:
-            segments.append(3)   # Subprime High-Risk
+SEGMENT_WEIGHTS = [0.35, 0.28, 0.20, 0.17]
 
-    records = []
-    for seg in segments:
-        if seg == 0:  # Mass Market
-            income = np.random.normal(52000, 12000)
-            credit_score = np.random.normal(645, 55)
-            employment_years = np.random.normal(5, 3)
-            debt_to_income = np.random.normal(0.28, 0.08)
-            loan_history_count = np.random.randint(0, 4)
-            age = np.random.randint(22, 55)
-            home_ownership = np.random.choice(["rent", "own", "rent"], p=[0.6, 0.25, 0.15])
-            verified_income = np.random.choice([True, False], p=[0.55, 0.45])
-        elif seg == 1:  # Rising Prime
-            income = np.random.normal(78000, 18000)
-            credit_score = np.random.normal(705, 45)
-            employment_years = np.random.normal(3.5, 2)
-            debt_to_income = np.random.normal(0.22, 0.07)
-            loan_history_count = np.random.randint(1, 5)
-            age = np.random.randint(24, 40)
-            home_ownership = np.random.choice(["rent", "own", "rent"], p=[0.55, 0.30, 0.15])
-            verified_income = np.random.choice([True, False], p=[0.65, 0.35])
-        elif seg == 2:  # Established Prime
-            income = np.random.normal(135000, 30000)
-            credit_score = np.random.normal(765, 40)
-            employment_years = np.random.normal(12, 5)
-            debt_to_income = np.random.normal(0.18, 0.06)
-            loan_history_count = np.random.randint(2, 8)
-            age = np.random.randint(32, 60)
-            home_ownership = np.random.choice(["own", "own", "rent"], p=[0.70, 0.20, 0.10])
-            verified_income = np.random.choice([True, False], p=[0.85, 0.15])
-        else:  # Subprime High-Risk
-            income = np.random.normal(32000, 9000)
-            credit_score = np.random.normal(565, 50)
-            employment_years = np.random.normal(3, 2.5)
-            debt_to_income = np.random.normal(0.42, 0.10)
-            loan_history_count = np.random.randint(0, 7)
-            age = np.random.randint(20, 50)
-            home_ownership = np.random.choice(["rent", "rent", "own"], p=[0.75, 0.15, 0.10])
-            verified_income = np.random.choice([True, False], p=[0.30, 0.70])
+def _generate_segment(n, params):
+    income = np.random.uniform(*params["income"], size=n)
+    credit_score = np.random.uniform(*params["credit_score"], size=n)
+    employment_years = np.random.uniform(*params["employment_years"], size=n)
+    debt_to_income = np.random.uniform(*params["debt_to_income"], size=n)
+    loan_history_count = np.random.randint(params["loan_history_count"][0], params["loan_history_count"][1] + 1, size=n)
+    age = np.random.randint(params["age"][0], params["age"][1] + 1, size=n)
+    home_ownership = (np.random.random(size=n) < params["home_ownership"]).astype(int)
+    verified_income = (np.random.random(size=n) < params["verified_income"]).astype(int)
+    return pd.DataFrame({
+        "income": income,
+        "credit_score": credit_score,
+        "employment_years": employment_years,
+        "debt_to_income": debt_to_income,
+        "loan_history_count": loan_history_count,
+        "age": age,
+        "home_ownership": home_ownership,
+        "verified_income": verified_income,
+    })
 
-        records.append({
-            "income": max(income, 5000),
-            "credit_score": min(max(credit_score, 300), 850),
-            "employment_years": max(employment_years, 0),
-            "debt_to_income": max(debt_to_income, 0.01),
-            "loan_history_count": loan_history_count,
-            "age": age,
-            "home_ownership": home_ownership,
-            "verified_income": verified_income,
-            "segment_true": seg,
-        })
-
-    df = pd.DataFrame(records)
-    return df
-
+def load_data(n=5000):
+    segment_counts = np.random.multinomial(n, SEGMENT_WEIGHTS)
+    dfs = []
+    for label, count in enumerate(segment_counts):
+        df = _generate_segment(count, SEGMENT_PARAMS[label])
+        df["_true_segment"] = label
+        dfs.append(df)
+    data = pd.concat(dfs, ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
+    return data
 
 if __name__ == "__main__":
-    df = generate_customer_data(5000)
+    df = load_data()
     print(df.head())
-    print(df["segment_true"].value_counts().sort_index())
+    print(df.shape)
+    print(df["_true_segment"].value_counts().sort_index())

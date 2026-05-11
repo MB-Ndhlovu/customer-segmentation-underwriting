@@ -1,34 +1,46 @@
-"""Feature engineering for customer underwriting data."""
 import pandas as pd
 import numpy as np
 
+FEATURE_COLS = ["income", "credit_score", "employment_years",
+                "debt_to_income", "loan_history_count", "age",
+                "home_ownership", "verified_income"]
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Engineer RFM, behavioral, and stability features."""
-    X = pd.DataFrame()
+SEGMENT_NAMES = {
+    0: "Mass Market",
+    1: "Rising Prime",
+    2: "Established Prime",
+    3: "Subprime High-Risk",
+}
 
-    X["income"] = df["income"]
-    X["credit_score"] = df["credit_score"]
-    X["employment_years"] = df["employment_years"]
-    X["debt_to_income"] = df["debt_to_income"]
-    X["loan_history_count"] = df["loan_history_count"]
-    X["age"] = df["age"]
-    X["verified_income"] = df["verified_income"].astype(int)
-
-    home_map = {"own": 2, "mortgage": 1, "rent": 0}
-    X["home_ownership_score"] = df["home_ownership"].map(lambda h: home_map.get(h, 0))
+def build_features(df):
+    X = df[FEATURE_COLS].copy()
 
     # RFM-style features
-    X["income_per_age"] = df["income"] / df["age"].clip(lower=1)
-    X["employment_stability"] = df["employment_years"] / df["age"].clip(lower=1)
+    X["income_per_loan"] = df["income"] / (df["loan_history_count"] + 1)
+    X["income_per_age"] = df["income"] / (df["age"] + 1)
 
-    # Behavioral features
-    X["credit_to_income_ratio"] = df["credit_score"] / df["income"].clip(lower=1) * 1000
-    X["loan_density"] = df["loan_history_count"] / df["employment_years"].clip(lower=0.5)
+    # Behavioral
+    X["credit_per_employment_year"] = df["credit_score"] / (df["employment_years"] + 1)
+    X["loan_density"] = df["loan_history_count"] / (df["age"] - 17 + 1)
+    X["DTI_credit_interaction"] = df["debt_to_income"] * df["credit_score"] / 100
 
-    # Stability features
-    X["debt_burden_flag"] = (df["debt_to_income"] > 0.35).astype(int)
-    X["verified_income_flag"] = df["verified_income"].astype(int)
-    X["home_ownership_flag"] = (df["home_ownership"] == "own").astype(int)
+    # Stability
+    X["employment_age_ratio"] = df["employment_years"] / (df["age"] - 17 + 1)
+    X["income_stability"] = df["verified_income"] * (1 - df["debt_to_income"])
+    X["ownership_verified"] = df["home_ownership"] * df["verified_income"]
 
     return X
+
+def get_feature_names():
+    base = FEATURE_COLS
+    derived = ["income_per_loan", "income_per_age", "credit_per_employment_year",
+               "loan_density", "DTI_credit_interaction", "employment_age_ratio",
+               "income_stability", "ownership_verified"]
+    return base + derived
+
+if __name__ == "__main__":
+    from data_loader import load_data
+    df = load_data(500)
+    X = build_features(df)
+    print(X.shape)
+    print(X.columns.tolist())

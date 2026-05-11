@@ -1,30 +1,50 @@
 # Customer Segmentation for Underwriting
 
+**Project 3 — BSc Mathematical Sciences | Actuarial & Quantitative Finance Track**
+
+---
+
 ## Overview
-Unsupervised KMeans clustering + supervised RandomForest classification pipeline for credit underwriting segmentation. Synthetic dataset of 5,000 customer records with 8 features.
+
+This project builds a **customer segmentation system** for loan underwriting using **KMeans clustering** on synthetic customer data, followed by a **supervised classification model** that predicts segment membership from application features alone.
+
+The goal: enable lenders to automatically classify loan applicants into risk tiers that map to real underwriting decisions.
+
+---
 
 ## Segments
-| Label | Name | Description |
-|-------|------|-------------|
-| 0 | Mass Market | Low-to-medium income, average credit, stable employment |
-| 1 | Rising Prime | Growing income, improving credit, early career |
-| 2 | Established Prime | High income, strong credit, long tenure |
-| 3 | Subprime High-Risk | Low income, poor credit, high debt-to-income |
 
-## Pipeline
+| Label | Name | Profile |
+|-------|------|---------|
+| 0 | **Mass Market** | Young borrowers, low-to-moderate income, short credit history, moderate DTI |
+| 1 | **Rising Prime** | Mid-career, growing income, good credit, low DTI, stable employment |
+| 2 | **Established Prime** | High income, excellent credit, long tenure, low DTI, asset-rich |
+| 3 | **Subprime High-Risk** | High DTI, thin credit file, employment instability, verified income concerns |
+
+---
+
+## Architecture
+
 ```
-data_loader.py  →  features.py  →  segment.py  →  classify.py
-      ↓                ↓               ↓              ↓
-  raw customer    engineered      KMeans +       RandomForest
-  records (5k)    features        profiling      classifier
+data_loader.py    -> Synthetic 5000-row dataset
+features.py       -> RFM, behavioral, stability feature engineering
+segment.py        -> KMeans + Elbow + Silhouette + profiling
+classify.py       -> RandomForestClassifier on cluster labels
+run_pipeline.py   -> Orchestrates full pipeline
 ```
 
-## Files
-- `src/data_loader.py` — synthetic data generation
-- `src/features.py` — RFM, behavioral, stability features
-- `src/segment.py` — KMeans clustering, silhouette, elbow, profiling
-- `src/classify.py` — RandomForest trained on cluster labels
-- `run_pipeline.py` — full pipeline execution
+---
 
-## Results
-Saved to `reports/segmentation_results.json`
+## Business Impact
+
+- Segment predictions enable **instant risk triage** at loan application
+- Supervised model allows **real-time scoring** without re-running clustering
+- Four-tier system maps directly to: *approve with rate, refer, decline, subprime bucket*
+
+---
+
+## Tech Stack
+
+- Python 3.12
+- pandas, numpy, scikit-learn
+- matplotlib (visualization)

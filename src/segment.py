@@ -1,11 +1,9 @@
-"""KMeans clustering with elbow method, silhouette analysis, and segment profiling."""
 import numpy as np
 import pandas as pd
-from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 import json
-
 
 SEGMENT_NAMES = {
     0: "Mass Market",
@@ -14,74 +12,57 @@ SEGMENT_NAMES = {
     3: "Subprime High-Risk",
 }
 
-
-def find_optimal_k(X_scaled: np.ndarray, max_k: int = 8) -> dict:
-    """Compute inertia and silhouette scores for k=2..max_k."""
-    results = {"k": [], "inertia": [], "silhouette": []}
-    for k in range(2, max_k + 1):
+def find_optimal_k(X_scaled, k_range=range(2, 9)):
+    inertias, silhouettes = [], []
+    for k in k_range:
         km = KMeans(n_clusters=k, random_state=42, n_init=10)
         labels = km.fit_predict(X_scaled)
-        results["k"].append(k)
-        results["inertia"].append(float(km.inertia_))
-        results["silhouette"].append(float(silhouette_score(X_scaled, labels)))
-    return results
+        inertias.append(km.inertia_)
+        silhouettes.append(silhouette_score(X_scaled, labels))
+    return inertias, silhouettes
 
-
-def fit_kmeans(X_scaled: np.ndarray, n_clusters: int = 4) -> tuple:
-    """Fit KMeans and return labels + scaler."""
+def fit_kmeans(X_scaled, n_clusters=4):
     km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
     labels = km.fit_predict(X_scaled)
-    return labels, km
+    return km, labels
 
-
-def profile_segments(X: pd.DataFrame, labels: np.ndarray) -> pd.DataFrame:
-    """Profile each cluster with feature means."""
-    df = X.copy()
-    df["cluster"] = labels
-    profiles = df.groupby("cluster").mean(numeric_only=True)
+def profile_segments(X, labels, df_orig):
+    profiles = {}
+    for seg in np.unique(labels):
+        mask = labels == seg
+        seg_data = X[mask]
+        orig_seg_data = df_orig[mask]
+        profiles[int(seg)] = {
+            "n": int(mask.sum()),
+            "mean_income": float(seg_data["income"].mean()),
+            "mean_credit_score": float(seg_data["credit_score"].mean()),
+            "mean_employment_years": float(seg_data["employment_years"].mean()),
+            "mean_dti": float(seg_data["debt_to_income"].mean()),
+            "mean_loan_count": float(seg_data["loan_history_count"].mean()),
+            "mean_age": float(seg_data["age"].mean()),
+            "pct_homeowners": float(orig_seg_data["home_ownership"].mean()),
+            "pct_verified_income": float(orig_seg_data["verified_income"].mean()),
+        }
     return profiles
 
+def assign_segment_names(labels):
+    return np.array([SEGMENT_NAMES[l] for l in labels])
 
-def select_best_k(optimal_results: dict) -> int:
-    """Select k using silhouette score, capped at 4 for underwriting business logic."""
-    scores = optimal_results["silhouette"]
-    best_idx = int(np.argmax(scores))
-    # Enforce 4 segments for underwriting use case
-    return 4
+if __name__ == "__main__":
+    from data_loader import load_data
+    from features import build_features, get_feature_names
+    from sklearn.preprocessing import StandardScaler
 
-
-def run_clustering(X: pd.DataFrame) -> dict:
-    """Full clustering pipeline. Returns artifacts."""
+    df = load_data()
+    X = build_features(df)
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    # Elbow + silhouette
-    opt_results = find_optimal_k(X_scaled, max_k=8)
-    best_k = select_best_k(opt_results)
-
-    labels, km = fit_kmeans(X_scaled, n_clusters=best_k)
-
-    profiles = profile_segments(X, labels)
-
-    results = {
-        "optimal_k": best_k,
-        "k_tested": opt_results["k"],
-        "inertias": opt_results["inertia"],
-        "silhouette_scores": opt_results["silhouette"],
-        "cluster_counts": pd.Series(labels).value_counts().sort_index().to_dict(),
-        "profiles": profiles.to_dict(orient="index"),
-    }
-    return results
-
-
-if __name__ == "__main__":
-    from data_loader import generate_customer_data
-    from features import build_features
-
-    df = generate_customer_data(5000)
-    X = build_features(df)
-    res = run_clustering(X)
-    print(f"Best k: {res['optimal_k']}")
-    print(f"Silhouette scores: {dict(zip(res['k_tested'], res['silhouette_scores']))}")
-    print("\nCluster counts:", res["cluster_counts"])
-    print("\nProfiles:\n", pd.DataFrame(res["profiles"]).T)
+    km, labels = fit_kmeans(X_scaled, 4)
+    sil = silhouette_score(X_scaled, labels)
+    print(f"Silhouette Score: {sil:.4f}")
+    profiles = profile_segments(X, labels, df)
+    for seg, p in profiles.items():
+        print(f"Segment {seg} ({SEGMENT_NAMES[seg]}): n={p['n']}, "
+              f"income={p['mean_income']:.0f}, credit={p['mean_credit_score']:.0f}, "
+              f"DTI={p['mean_dti']:.3f}, verified={p['pct_verified_income']:.2%}")
