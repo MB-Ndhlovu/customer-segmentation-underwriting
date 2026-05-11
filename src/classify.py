@@ -1,27 +1,54 @@
-"""Train supervised classifier on cluster labels."""
-
+"""Train RandomForest classifier on cluster labels."""
+import json
+import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, accuracy_score, f1_score
 
 
-def train_classifier(X: pd.DataFrame, labels, test_size=0.2, random_state=42):
+def train_classifier(X: pd.DataFrame, labels: np.ndarray) -> dict:
+    """Train-test split + RandomForest. Return metrics."""
     X_train, X_test, y_train, y_test = train_test_split(
-        X, labels, test_size=test_size, random_state=random_state, stratify=labels
+        X, labels, test_size=0.2, random_state=42, stratify=labels
     )
-    clf = RandomForestClassifier(n_estimators=200, max_depth=10, random_state=random_state)
+
+    clf = RandomForestClassifier(n_estimators=200, max_depth=10, random_state=42, n_jobs=-1)
     clf.fit(X_train, y_train)
-    preds = clf.predict(X_test)
-    acc = accuracy_score(y_test, preds)
-    return clf, acc, X_test, y_test, preds
+
+    y_pred = clf.predict(X_test)
+
+    results = {
+        "accuracy": float(accuracy_score(y_test, y_pred)),
+        "f1_macro": float(f1_score(y_test, y_pred, average="macro")),
+        "classification_report": classification_report(y_test, y_pred, output_dict=True),
+        "feature_importances": {
+            feat: float(imp) for feat, imp in zip(X.columns, clf.feature_importances_)
+        },
+    }
+    return results
 
 
-def get_feature_importance(clf, feature_names) -> pd.DataFrame:
-    imp = clf.feature_importances_
-    df = pd.DataFrame({"feature": feature_names, "importance": imp.round(4)})
-    return df.sort_values("importance", ascending=False).reset_index(drop=True)
+def run_classification(X: pd.DataFrame, labels: np.ndarray) -> dict:
+    metrics = train_classifier(X, labels)
+    return metrics
 
 
-def predict_segment(clf, X: pd.DataFrame):
-    return clf.predict(X)
+if __name__ == "__main__":
+    from data_loader import generate_customer_data
+    from features import build_features
+    from segment import fit_kmeans
+    from sklearn.preprocessing import StandardScaler
+
+    df = generate_customer_data(5000)
+    X = build_features(df)
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    labels, _ = fit_kmeans(X_scaled, n_clusters=4)
+
+    res = run_classification(X, labels)
+    print(f"Accuracy: {res['accuracy']:.4f}")
+    print(f"F1 Macro: {res['f1_macro']:.4f}")
+    print("\nFeature importances:")
+    for feat, imp in sorted(res["feature_importances"].items(), key=lambda x: -x[1]):
+        print(f"  {feat}: {imp:.4f}")

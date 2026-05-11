@@ -1,29 +1,30 @@
 # Customer Segmentation for Underwriting
 
 ## Overview
-This project implements an unsupervised + supervised pipeline for customer segmentation in lending/underwriting contexts. Using KMeans clustering on behavioral and financial features, we identify 4 distinct customer segments, then train a supervised classifier to predict segment membership from application data alone.
+Unsupervised KMeans clustering + supervised RandomForest classification pipeline for credit underwriting segmentation. Synthetic dataset of 5,000 customer records with 8 features.
 
 ## Segments
-| Label | Name | Profile |
-|-------|------|---------|
-| 0 | Mass Market | Young borrowers, modest income, standard credit |
-| 1 | Rising Prime | Growing income, improving credit, mid-career |
-| 2 | Established Prime | High income, excellent credit, stable employment |
-| 3 | Subprime High-Risk | Low income, poor credit, high DTI, many prior loans |
+| Label | Name | Description |
+|-------|------|-------------|
+| 0 | Mass Market | Low-to-medium income, average credit, stable employment |
+| 1 | Rising Prime | Growing income, improving credit, early career |
+| 2 | Established Prime | High income, strong credit, long tenure |
+| 3 | Subprime High-Risk | Low income, poor credit, high debt-to-income |
 
 ## Pipeline
-1. **Synthetic Data Generation** — 5000 rows with realistic distributions
-2. **Feature Engineering** — RFM, behavioral, stability features
-3. **Clustering** — KMeans with Elbow + Silhouette analysis for k=4
-4. **Classification** — RandomForest trained on cluster labels
-5. **Reporting** — JSON summary of profiles, metrics, feature importance
+```
+data_loader.py  →  features.py  →  segment.py  →  classify.py
+      ↓                ↓               ↓              ↓
+  raw customer    engineered      KMeans +       RandomForest
+  records (5k)    features        profiling      classifier
+```
+
+## Files
+- `src/data_loader.py` — synthetic data generation
+- `src/features.py` — RFM, behavioral, stability features
+- `src/segment.py` — KMeans clustering, silhouette, elbow, profiling
+- `src/classify.py` — RandomForest trained on cluster labels
+- `run_pipeline.py` — full pipeline execution
 
 ## Results
-- Silhouette Score: ~0.58 (good cluster separation)
-- Classification Accuracy: >93% on held-out test set
-- Top classification features: credit_score, verified_income, debt_to_income
-
-## Business Impact
-- Segments map to risk tiers used in underwriting decisions
-- Classifier enables real-time segment prediction at loan application
-- Feature importance guides data collection priorities
+Saved to `reports/segmentation_results.json`
