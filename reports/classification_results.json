@@ -1,44 +1,52 @@
 {
-  "accuracy": 0.968,
+  "accuracy": 0.944,
   "classification_report": {
-    "Mass Market": {
-      "precision": 0.9745454545454545,
-      "recall": 0.9640287769784173,
-      "f1-score": 0.969258589511754,
-      "support": 278.0
+    "0": {
+      "precision": 0.9431438127090301,
+      "recall": 0.9929577464788732,
+      "f1-score": 0.967409948542024,
+      "support": 284.0
     },
-    "Rising Prime": {
-      "precision": 0.9716981132075472,
-      "recall": 0.958139534883721,
-      "f1-score": 0.9648711943793911,
-      "support": 215.0
+    "1": {
+      "precision": 0.9692307692307692,
+      "recall": 0.8689655172413793,
+      "f1-score": 0.9163636363636364,
+      "support": 145.0
     },
-    "Established Prime": {
-      "precision": 0.957983193277311,
-      "recall": 0.9702127659574468,
-      "f1-score": 0.9640591966173362,
+    "2": {
+      "precision": 0.9235127478753541,
+      "recall": 0.9702380952380952,
+      "f1-score": 0.9462989840348331,
+      "support": 336.0
+    },
+    "3": {
+      "precision": 0.963302752293578,
+      "recall": 0.8936170212765957,
+      "f1-score": 0.9271523178807947,
       "support": 235.0
     },
-    "Subprime High-Risk": {
-      "precision": 0.9672727272727273,
-      "recall": 0.9779411764705882,
-      "f1-score": 0.9725776965265083,
-      "support": 272.0
-    },
-    "accuracy": 0.968,
+    "accuracy": 0.944,
     "macro avg": {
-      "precision": 0.96787487207576,
-      "recall": 0.9675805635725433,
-      "f1-score": 0.9676916692587474,
+      "precision": 0.9497975205271829,
+      "recall": 0.9314445950587358,
+      "f1-score": 0.9393062217053221,
       "support": 1000.0
     },
     "weighted avg": {
-      "precision": 0.968062962941609,
-      "recall": 0.968,
-      "f1-score": 0.9679962393361209,
+      "precision": 0.9450677344229359,
+      "recall": 0.944,
+      "f1-score": 0.9434544059963528,
       "support": 1000.0
     }
   },
-  "n_train": 4000,
-  "n_test": 1000
+  "feature_importances": {
+    "income": 0.2116177054763632,
+    "credit_score": 0.13391804773013766,
+    "employment_years": 0.05319963573892395,
+    "debt_to_income": 0.14006768827319674,
+    "loan_history_count": 0.036752169054591485,
+    "age": 0.05468304803475848,
+    "home_ownership_encoded": 0.00902788806459908,
+    "verified_income": 0.3607338176274295
+  }
 }

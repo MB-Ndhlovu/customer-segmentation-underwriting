@@ -1,51 +1,72 @@
+"""
+Supervised classification: predict segment label from application features.
+Trains RandomForestClassifier on cluster labels from KMeans.
+"""
+
+import json
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import (
-    classification_report,
-    accuracy_score,
-    confusion_matrix,
-    recall_score,
-    precision_score,
-    f1_score,
-)
+from sklearn.metrics import accuracy_score, classification_report
 
 
-def train_classifier(X: np.ndarray, y: np.ndarray, random_state: int = 42):
-    """Train RandomForest on cluster labels; return model, train/test split, and metrics."""
-    X_tr, X_te, y_tr, y_te = train_test_split(
-        X, y, test_size=0.25, random_state=random_state, stratify=y
+APP_FEATURE_COLS = [
+    "income",
+    "credit_score",
+    "employment_years",
+    "debt_to_income",
+    "loan_history_count",
+    "age",
+    "home_ownership_encoded",
+    "verified_income",
+]
+
+
+def train_classifier(df: pd.DataFrame, labels: np.ndarray, random_state: int = 42):
+    """
+    Train a RandomForestClassifier on the cluster labels.
+    Returns model, accuracy, report, feature_importances.
+    """
+    X = df[APP_FEATURE_COLS].values
+    y = labels
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=random_state, stratify=y
     )
 
     clf = RandomForestClassifier(
         n_estimators=200,
         max_depth=10,
-        min_samples_split=5,
-        min_samples_leaf=2,
+        min_samples_leaf=5,
         random_state=random_state,
         n_jobs=-1,
     )
-    clf.fit(X_tr, y_tr)
+    clf.fit(X_train, y_train)
 
-    y_pred = clf.predict(X_te)
+    y_pred = clf.predict(X_test)
+    acc = float(accuracy_score(y_test, y_pred))
+    report = classification_report(y_test, y_pred, output_dict=True)
 
-    metrics = {
-        "accuracy": round(accuracy_score(y_te, y_pred), 4),
-        "precision_weighted": round(precision_score(y_te, y_pred, average="weighted", zero_division=0), 4),
-        "recall_weighted": round(recall_score(y_te, y_pred, average="weighted", zero_division=0), 4),
-        "f1_weighted": round(f1_score(y_te, y_pred, average="weighted", zero_division=0), 4),
-        "confusion_matrix": confusion_matrix(y_te, y_pred).tolist(),
-        "classification_report": classification_report(
-            y_te, y_pred, zero_division=0
-        ),
+    importances = {
+        col: float(fi)
+        for col, fi in zip(APP_FEATURE_COLS, clf.feature_importances_)
     }
 
-    return clf, (X_tr, X_te, y_tr, y_te), metrics
+    return clf, acc, report, importances
 
 
-def get_feature_importance(clf: RandomForestClassifier, feature_names: list) -> dict:
-    """Return sorted feature importance."""
-    importances = clf.feature_importances_
-    feat_imp = dict(zip(feature_names, np.round(importances, 4)))
-    return dict(sorted(feat_imp.items(), key=lambda x: x[1], reverse=True))
+def save_classification_results(
+    acc: float,
+    report: dict,
+    importances: dict,
+    output_path: str,
+):
+    payload = {
+        "accuracy": acc,
+        "classification_report": report,
+        "feature_importances": importances,
+    }
+    with open(output_path, "w") as f:
+        json.dump(payload, f, indent=2)
+    return output_path
