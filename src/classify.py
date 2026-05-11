@@ -1,42 +1,51 @@
 import numpy as np
-from sklearn.model_selection import train_test_split
+import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    classification_report,
+    accuracy_score,
+    confusion_matrix,
+    recall_score,
+    precision_score,
+    f1_score,
+)
 
-FEATURE_COLS = ["income", "credit_score", "employment_years",
-                "debt_to_income", "loan_history_count", "age",
-                "home_ownership", "verified_income"]
 
-def train_classifier(X, labels, test_size=0.2, random_state=42):
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, labels, test_size=test_size, random_state=random_state, stratify=labels
+def train_classifier(X: np.ndarray, y: np.ndarray, random_state: int = 42):
+    """Train RandomForest on cluster labels; return model, train/test split, and metrics."""
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X, y, test_size=0.25, random_state=random_state, stratify=y
     )
-    clf = RandomForestClassifier(n_estimators=200, max_depth=10,
-                                  random_state=random_state, n_jobs=-1)
-    clf.fit(X_train, y_train)
-    y_pred = clf.predict(X_test)
-    acc = accuracy_score(y_test, y_pred)
-    report = classification_report(y_test, y_pred, target_names=[
-        "Mass Market", "Rising Prime", "Established Prime", "Subprime High-Risk"
-    ], output_dict=True)
-    return clf, acc, report
 
-if __name__ == "__main__":
-    from data_loader import load_data
-    from features import build_features
-    from segment import fit_kmeans
-    from sklearn.preprocessing import StandardScaler
+    clf = RandomForestClassifier(
+        n_estimators=200,
+        max_depth=10,
+        min_samples_split=5,
+        min_samples_leaf=2,
+        random_state=random_state,
+        n_jobs=-1,
+    )
+    clf.fit(X_tr, y_tr)
 
-    df = load_data()
-    X = build_features(df)
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    _, labels = fit_kmeans(X_scaled, 4)
+    y_pred = clf.predict(X_te)
 
-    clf, acc, report = train_classifier(df[FEATURE_COLS], labels)
-    print(f"Accuracy: {acc:.4f}")
-    print(classification_report(
-        ["Mass Market", "Rising Prime", "Established Prime", "Subprime High-Risk"],
-        [report[str(i)]["precision"] for i in range(4)],
-        target_names=["Mass Market", "Rising Prime", "Established Prime", "Subprime High-Risk"]
-    ))
+    metrics = {
+        "accuracy": round(accuracy_score(y_te, y_pred), 4),
+        "precision_weighted": round(precision_score(y_te, y_pred, average="weighted", zero_division=0), 4),
+        "recall_weighted": round(recall_score(y_te, y_pred, average="weighted", zero_division=0), 4),
+        "f1_weighted": round(f1_score(y_te, y_pred, average="weighted", zero_division=0), 4),
+        "confusion_matrix": confusion_matrix(y_te, y_pred).tolist(),
+        "classification_report": classification_report(
+            y_te, y_pred, zero_division=0
+        ),
+    }
+
+    return clf, (X_tr, X_te, y_tr, y_te), metrics
+
+
+def get_feature_importance(clf: RandomForestClassifier, feature_names: list) -> dict:
+    """Return sorted feature importance."""
+    importances = clf.feature_importances_
+    feat_imp = dict(zip(feature_names, np.round(importances, 4)))
+    return dict(sorted(feat_imp.items(), key=lambda x: x[1], reverse=True))

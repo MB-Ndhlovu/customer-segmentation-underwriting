@@ -1,50 +1,24 @@
 # Customer Segmentation for Underwriting
 
-**Project 3 — BSc Mathematical Sciences | Actuarial & Quantitative Finance Track**
-
----
-
 ## Overview
-
-This project builds a **customer segmentation system** for loan underwriting using **KMeans clustering** on synthetic customer data, followed by a **supervised classification model** that predicts segment membership from application features alone.
-
-The goal: enable lenders to automatically classify loan applicants into risk tiers that map to real underwriting decisions.
-
----
+This project builds an unsupervised clustering pipeline to segment loan applicants into 4 risk-tiered groups, then trains a supervised classifier to predict segment membership from application features alone.
 
 ## Segments
-
 | Label | Name | Profile |
 |-------|------|---------|
-| 0 | **Mass Market** | Young borrowers, low-to-moderate income, short credit history, moderate DTI |
-| 1 | **Rising Prime** | Mid-career, growing income, good credit, low DTI, stable employment |
-| 2 | **Established Prime** | High income, excellent credit, long tenure, low DTI, asset-rich |
-| 3 | **Subprime High-Risk** | High DTI, thin credit file, employment instability, verified income concerns |
+| 0 | Mass Market | Low income, mid credit, stable employment, low DTI |
+| 1 | Rising Prime | Moderate income, good credit, short employment, moderate DTI |
+| 2 | Established Prime | High income, excellent credit, long tenure, low DTI |
+| 3 | Subprime High-Risk | Low income, poor credit, unstable employment, high DTI |
 
----
-
-## Architecture
-
-```
-data_loader.py    -> Synthetic 5000-row dataset
-features.py       -> RFM, behavioral, stability feature engineering
-segment.py        -> KMeans + Elbow + Silhouette + profiling
-classify.py       -> RandomForestClassifier on cluster labels
-run_pipeline.py   -> Orchestrates full pipeline
-```
-
----
+## Pipeline
+1. `src/data_loader.py` - Generates 5,000 synthetic customer records with realistic feature distributions
+2. `src/features.py` - Builds RFM, behavioral, and stability feature sets
+3. `src/segment.py` - KMeans clustering (k=4) with Elbow method + silhouette analysis
+4. `src/classify.py` - RandomForestClassifier trained on cluster labels; evaluates precision/recall/F1 per segment
+5. `run_pipeline.py` - Orchestrates the full pipeline end-to-end
 
 ## Business Impact
-
-- Segment predictions enable **instant risk triage** at loan application
-- Supervised model allows **real-time scoring** without re-running clustering
-- Four-tier system maps directly to: *approve with rate, refer, decline, subprime bucket*
-
----
-
-## Tech Stack
-
-- Python 3.12
-- pandas, numpy, scikit-learn
-- matplotlib (visualization)
+- Underwriters can quickly assess applicant risk tier from application data alone
+- Segment-level default rate estimates enable risk-adjusted pricing
+- Supervised model allows instant scoring at application intake
