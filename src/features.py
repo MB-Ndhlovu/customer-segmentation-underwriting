@@ -1,59 +1,39 @@
-"""
-Feature engineering for customer segmentation.
-Transforms raw customer data into features for clustering and classification.
-"""
-
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
+def build_features(df):
     """
-    Build feature matrix for clustering and classification.
-    Returns DataFrame with all numeric features.
+    Build engineered features from raw customer data.
+    Returns DataFrame with original + engineered features.
     """
-    f = df.copy()
+    X = df[['income', 'credit_score', 'employment_years',
+            'debt_to_income', 'loan_history_count', 'age',
+            'home_ownership', 'verified_income']].copy()
 
-    # ── RFM-like financial health features ──────────────────────────────────
-    f["dti_risk_score"] = f["debt_to_income"] * 10          # higher DTI → higher risk
-    f["income_per_loan"] = f["income"] / (f["loan_history_count"] + 1)
+    # RFM-style features
+    X['income_per_employment_year'] = df['income'] / (df['employment_years'] + 0.5)
+    X['credit_to_income_ratio'] = df['credit_score'] / (df['income'] / 1000)
 
-    # ── Behavioral features ─────────────────────────────────────────────────
-    f["emp_stability"] = np.log1p(f["employment_years"])   # log-smoothed tenure
-    f["loan_density"] = f["loan_history_count"] / (f["age"] - 17)  # loans per eligible year
-    f["verified_flag"] = f["verified_income"].astype(float)
+    # Behavioral features
+    X['loan_density'] = df['loan_history_count'] / (df['age'] - 17 + 1)
+    X['credit_per_age'] = df['credit_score'] / (df['age'] - 17 + 1)
+    X['income_stability_proxy'] = df['employment_years'] / (df['age'] - 17 + 1)
 
-    # ── Stability / capitalization features ─────────────────────────────────
-    f["home_ownership_encoded"] = f["home_ownership"].map({
-        "own": 3, "mortgage": 2, "rent": 1, "other": 0
-    }).astype(float)
+    # Stability features
+    X['debt_burden'] = df['debt_to_income'] * df['loan_history_count']
+    X['verified_asset_proxy'] = (df['home_ownership'].astype(int) +
+                                  df['verified_income'].astype(int))
+    X['employment_depth'] = df['employment_years'] * df['income'] / 100000
 
-    f["income_stability"] = f["verified_flag"] * f["emp_stability"]
-
-    # ── Derived risk indicators ─────────────────────────────────────────────
-    f["credit_dti_interaction"] = f["credit_score"] / 100 * (1 - f["debt_to_income"])
-
-    return f
+    return X
 
 
-def get_feature_columns() -> list:
-    """
-    Returns the list of feature column names used for clustering / classification.
-    """
-    return [
-        "income",
-        "credit_score",
-        "employment_years",
-        "debt_to_income",
-        "loan_history_count",
-        "age",
-        "home_ownership_encoded",
-        "verified_income",
-        # derived
-        "dti_risk_score",
-        "income_per_loan",
-        "emp_stability",
-        "loan_density",
-        "income_stability",
-        "credit_dti_interaction",
-    ]
+def get_feature_names():
+    base = ['income', 'credit_score', 'employment_years',
+            'debt_to_income', 'loan_history_count', 'age',
+            'home_ownership', 'verified_income']
+    engineered = ['income_per_employment_year', 'credit_to_income_ratio',
+                  'loan_density', 'credit_per_age', 'income_stability_proxy',
+                  'debt_burden', 'verified_asset_proxy', 'employment_depth']
+    return base + engineered
