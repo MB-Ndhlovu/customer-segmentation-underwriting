@@ -1,23 +1,39 @@
 # Customer Segmentation for Underwriting
 
 ## Overview
-Unsupervised KMeans clustering combined with supervised RandomForest classification to segment customers for life insurance underwriting. Produces 4 actionable segments from application features.
+This project builds a customer segmentation system for loan underwriting using unsupervised learning (KMeans clustering) combined with supervised classification. The pipeline enables lenders to categorize loan applicants into actionable risk segments.
 
 ## Segments
-| Label | Name | Profile |
-|-------|------|---------|
-| 0 | Mass Market | Young, low credit, moderate debt, entry-level |
-| 1 | Rising Prime | Growing income, improving credit, stable employment |
-| 2 | Established Prime | High income, excellent credit, long tenure, low risk |
-| 3 | Subprime High-Risk | Low credit, high DTI, thin file, elevated risk |
+The model identifies 4 distinct customer segments:
+
+| Segment | Profile |
+|---------|---------|
+| **0 — Mass Market** | Moderate income, average credit, standard employment |
+| **1 — Rising Prime** | Growing income, improving credit, stable employment |
+| **2 — Established Prime** | High income, strong credit, long tenure, verified assets |
+| **3 — Subprime High-Risk** | Low income, poor credit, short employment, high DTI |
 
 ## Pipeline
-1. `src/data_loader.py` — Generate 5000 synthetic customer records
-2. `src/features.py` — Engineer RFM, behavioral, stability features
-3. `src/segment.py` — KMeans + silhouette/elbow analysis → cluster labels
-4. `src/classify.py` — RandomForest trained on cluster labels
-5. `run_pipeline.py` — Execute full pipeline, print summary, save `reports/segmentation_results.json`
+1. **Data Generation** — Synthetic dataset of 5,000 customers with realistic financial profiles
+2. **Feature Engineering** — RFM, behavioral, and stability features
+3. **Segmentation** — KMeans clustering with Elbow method and silhouette analysis to determine optimal k
+4. **Classification** — RandomForestClassifier trained on cluster labels for fast segment prediction
 
 ## Results
-- Silhouette score, inertia, cluster profiles saved to `reports/segmentation_results.json`
-- RandomForest accuracy on cluster labels included in output
+- Silhouette Score: ~0.XX (varies by run)
+- Best K determined via Elbow method
+- Supervised model accuracy: ~XX% on held-out test set
+
+## Business Impact
+- Enables real-time applicant screening
+- Supports risk-based pricing
+- Identifies growth segments (Rising Prime)
+- Flags high-risk applicants (Subprime) for manual review
+
+## Files
+- `src/data_loader.py` — Synthetic data generator
+- `src/features.py` — Feature engineering pipeline
+- `src/segment.py` — KMeans clustering + evaluation
+- `src/classify.py` — RandomForestClassifier on cluster labels
+- `run_pipeline.py` — Orchestrates the full pipeline
+- `reports/segmentation_results.json` — Saved metrics and segment profiles

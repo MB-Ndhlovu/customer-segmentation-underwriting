@@ -1,53 +1,51 @@
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, silhouette_samples
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 
-SEGMENT_NAMES = {
-    0: "Mass Market",
-    1: "Rising Prime",
-    2: "Established Prime",
-    3: "Subprime High-Risk",
-}
-
-
-def find_optimal_k(X_scaled, k_range=range(2, 9)):
+def find_optimal_k(X_scaled, k_range: range, seed: int = 42):
+    """Use Elbow method (inertia) and Silhouette score to pick best k."""
     inertias = []
     silhouettes = []
+
     for k in k_range:
-        km = KMeans(n_clusters=k, random_state=42, n_init=10)
-        labels = km.fit_predict(X_scaled)
+        km = KMeans(n_clusters=k, random_state=seed, n_init=10)
+        km.fit(X_scaled)
         inertias.append(km.inertia_)
-        silhouettes.append(silhouette_score(X_scaled, labels))
-    return inertias, silhouettes
+        silhouettes.append(silhouette_score(X_scaled, km.labels_))
+
+    # Pick k with best silhouette, bounded
+    best_idx = int(np.argmax(silhouettes))
+    best_k = list(k_range)[best_idx]
+    best_silhouette = silhouettes[best_idx]
+
+    return best_k, best_silhouette, inertias, silhouettes
 
 
-def fit_kmeans(X_scaled, n_clusters=4):
-    km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    labels = km.fit_predict(X_scaled)
-    return km, labels
+def cluster(X_scaled, n_clusters: int, seed: int = 42) -> np.ndarray:
+    """Fit KMeans and return cluster labels."""
+    km = KMeans(n_clusters=n_clusters, random_state=seed, n_init=10)
+    return km.fit_predict(X_scaled)
 
 
-def profile_segments(df, labels):
-    profiles = {}
-    for seg in np.unique(labels):
-        mask = labels == seg
-        seg_df = df[mask]
-        profiles[int(seg)] = {
-            "count": int(mask.sum()),
-            "pct": round(float(mask.mean() * 100), 1),
-            "income_mean": float(seg_df["income"].mean()),
-            "credit_score_mean": float(seg_df["credit_score"].mean()),
-            "employment_years_mean": float(seg_df["employment_years"].mean()),
-            "debt_to_income_mean": float(seg_df["debt_to_income"].mean()),
-            "loan_history_count_mean": float(seg_df["loan_history_count"].mean()),
-            "age_mean": float(seg_df["age"].mean()),
-            "homeowner_pct": round(float(seg_df["home_ownership"].eq("own").mean() * 100), 1),
-            "verified_income_pct": round(float(seg_df["verified_income"].mean() * 100), 1),
-        }
+def profile_segments(df: pd.DataFrame, labels: np.ndarray, feature_cols: list) -> pd.DataFrame:
+    """Build per-segment profile summaries."""
+    df_plot = df.copy()
+    df_plot["cluster"] = labels
+    profiles = df_plot.groupby("cluster")[feature_cols].mean()
     return profiles
 
 
-def assign_segment_names(labels):
-    return np.array([SEGMENT_NAMES[l] for l in labels])
+def silhouette_detail(X_scaled, labels) -> dict:
+    """Per-sample silhouette scores and overall stats."""
+    sil_scores = silhouette_samples(X_scaled, labels)
+    return {
+        "mean": float(silhouette_score(X_scaled, labels)),
+        "std": float(sil_scores.std()),
+        "min": float(sil_scores.min()),
+        "max": float(sil_scores.max()),
+    }

@@ -1,43 +1,34 @@
-import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+
+from src.data_loader import FEATURE_COLS
 
 
-def build_features(df):
-    df = df.copy()
+def build_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Engineer RFM, behavioral, and stability features."""
 
-    # RFM-style features
-    df["income_per_year_of_employment"] = df["income"] / (df["employment_years"] + 1)
-    df["loan_density"] = df["loan_history_count"] / (df["age"] - 17)  # normalized by working life span
-    df["income_per_age"] = df["income"] / df["age"]
+    X = df[FEATURE_COLS].copy()
+
+    # RFM-adjacent features
+    X["income_per_employment_year"] = X["income"] / (X["employment_years"] + 1)
+    X["credit_per_age"] = X["credit_score"] / X["age"]
 
     # Behavioral features
-    df["credit_per_income"] = df["credit_score"] / (df["income"] / 1_000_000)
-    df["active_borrower"] = (df["loan_history_count"] > 2).astype(int)
-    df["high_loan_density"] = (df["loan_density"] > 0.15).astype(int)
+    X["loan_density"] = X["loan_history_count"] / (X["age"] - 17 + 1)  # loan rate since adulthood
+    X["verified_income_flag"] = X["verified_income"]
+    X["homeowner_flag"] = X["home_ownership_status"]
 
     # Stability features
-    df["income_stability_score"] = (
-        (df["employment_years"] / (df["age"] - 17)) * 0.5 +
-        (df["verified_income"].astype(float)) * 0.5
-    )
-    df["homeowner"] = (df["home_ownership"] == "own").astype(int)
-    df["long_tenure"] = (df["employment_years"] >= 5).astype(int)
+    X["employment_stability"] = X["employment_years"] / X["age"]
+    X["dti_risk"] = (X["debt_to_income"] > 0.36).astype(int)  # threshold for high DTI
+    X["credit_utilization_proxy"] = (X["credit_score"] < 620).astype(int)
 
-    return df
+    return X
 
 
-def prepare_for_clustering(df, feature_cols):
-    X = df[feature_cols].copy()
-
-    # Encode home_ownership
-    le = LabelEncoder()
-    X["home_ownership"] = le.fit_transform(X["home_ownership"])
-
-    # Encode verified_income
-    X["verified_income"] = X["verified_income"].astype(int)
-
+def scale_features(X: pd.DataFrame) -> tuple:
+    """Standardise features and return scaler for later use."""
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-
-    return X_scaled, X, scaler
+    return X_scaled, scaler
