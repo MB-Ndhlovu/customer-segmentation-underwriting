@@ -1,34 +1,32 @@
-import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler
+import pandas as pd
 
-from src.data_loader import FEATURE_COLS
+def compute_rfm_features(df):
+    """RFM-style features derived from credit behaviour."""
+    df = df.copy()
+    df["income_per_loan"] = df["income"] / (df["loan_history_count"] + 1)
+    df["credit_per_age"] = df["credit_score"] / df["age"]
+    df["emp_stability"] = df["employment_years"] / (df["age"] - 18 + 1)
+    return df
 
+def compute_behavioral_features(df):
+    """Loan history intensity and income robustness."""
+    df = df.copy()
+    df["loan_density"] = df["loan_history_count"] / (df["age"] - 18 + 1)
+    df["income_credit_product"] = df["income"] * df["credit_score"] / 1e6
+    df["high_dti_flag"] = (df["debt_to_income"] > 0.40).astype(int)
+    return df
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Engineer RFM, behavioral, and stability features."""
+def compute_stability_features(df):
+    """Employment and income verification stability."""
+    df = df.copy()
+    df["verified_income_flag"] = df["verified_income"]
+    df["homeowner_verified"] = ((df["home_ownership"] == 1) & (df["verified_income"] == 1)).astype(int)
+    df["tenure_score"] = np.minimum(df["employment_years"] / 10.0, 1.0)
+    return df
 
-    X = df[FEATURE_COLS].copy()
-
-    # RFM-adjacent features
-    X["income_per_employment_year"] = X["income"] / (X["employment_years"] + 1)
-    X["credit_per_age"] = X["credit_score"] / X["age"]
-
-    # Behavioral features
-    X["loan_density"] = X["loan_history_count"] / (X["age"] - 17 + 1)  # loan rate since adulthood
-    X["verified_income_flag"] = X["verified_income"]
-    X["homeowner_flag"] = X["home_ownership_status"]
-
-    # Stability features
-    X["employment_stability"] = X["employment_years"] / X["age"]
-    X["dti_risk"] = (X["debt_to_income"] > 0.36).astype(int)  # threshold for high DTI
-    X["credit_utilization_proxy"] = (X["credit_score"] < 620).astype(int)
-
-    return X
-
-
-def scale_features(X: pd.DataFrame) -> tuple:
-    """Standardise features and return scaler for later use."""
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    return X_scaled, scaler
+def build_features(df):
+    df = compute_rfm_features(df)
+    df = compute_behavioral_features(df)
+    df = compute_stability_features(df)
+    return df

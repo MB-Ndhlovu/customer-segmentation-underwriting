@@ -1,42 +1,36 @@
-import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
+import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, accuracy_score
 
+FEATURE_COLS = [
+    "income", "credit_score", "employment_years", "debt_to_income",
+    "loan_history_count", "age", "home_ownership", "verified_income",
+]
 
-def train_classifier(X: pd.DataFrame, y: np.ndarray, seed: int = 42):
-    """Train RandomForestClassifier on cluster labels, evaluate with hold-out."""
+def train_classifier(df, random_state=42):
+    X = df[FEATURE_COLS].values
+    y = df["segment_label"].values
+
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=seed, stratify=y
+        X, y, test_size=0.2, random_state=random_state, stratify=y
     )
 
     clf = RandomForestClassifier(
         n_estimators=200,
         max_depth=10,
-        min_samples_leaf=5,
-        random_state=seed,
+        random_state=random_state,
         n_jobs=-1,
     )
     clf.fit(X_train, y_train)
-    y_pred = clf.predict(X_test)
 
+    y_pred = clf.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
     report = classification_report(y_test, y_pred, output_dict=True)
-    cm = confusion_matrix(y_test, y_pred)
 
-    # Feature importances
-    imp = pd.Series(clf.feature_importances_, index=X.columns).sort_values(ascending=False)
+    return clf, acc, report
 
-    return {
-        "model": clf,
-        "accuracy": acc,
-        "classification_report": report,
-        "confusion_matrix": cm.tolist(),
-        "feature_importances": imp.to_dict(),
-    }
-
-
-def predict_segment(clf, X: pd.DataFrame) -> np.ndarray:
-    """Predict cluster segment for new application data."""
-    return clf.predict(X)
+def feature_importance(clf):
+    importances = dict(zip(FEATURE_COLS, clf.feature_importances_))
+    return dict(sorted(importances.items(), key=lambda x: x[1], reverse=True))

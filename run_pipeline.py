@@ -1,157 +1,102 @@
-import os
 import json
-import numpy as np
-import pandas as pd
+import sys
+import os
 
-from src.data_loader import generate_customer_data, FEATURE_COLS, SEGMENT_NAMES
-from src.features import build_features, scale_features
-from src.segment import find_optimal_k, cluster, profile_segments, silhouette_detail
-from src.classify import train_classifier
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from src.data_loader import build_dataset
+from src.features import build_features
+from src.segment import fit_kmeans, profile_segments, assign_segment_names
+from src.classify import train_classifier, feature_importance
 
-def run_pipeline():
+def main():
     print("=" * 60)
     print("CUSTOMER SEGMENTATION PIPELINE")
     print("=" * 60)
 
-    # ── 1. Load data ──────────────────────────────────────────────
-    print("\n[1/6] Generating synthetic customer data (n=5000)...")
-    df = generate_customer_data(n=5000, seed=42)
-    print(f"    Shape: {df.shape}")
-    print(f"    Segments embedded: {df['segment_label'].value_counts().sort_index().to_dict()}")
+    # 1. Load data
+    print("\n[1/5] Loading data...")
+    df = build_dataset()
+    print(f"      Loaded {len(df)} records")
 
-    # ── 2. Feature engineering ───────────────────────────────────
-    print("\n[2/6] Building features...")
-    X = build_features(df)
-    feature_cols = list(X.columns)
-    print(f"    Features ({len(feature_cols)}): {feature_cols}")
+    # 2. Feature engineering
+    print("\n[2/5] Engineering features...")
+    df = build_features(df)
+    engineered = [c for c in df.columns if c not in [
+        "income","credit_score","employment_years","debt_to_income",
+        "loan_history_count","age","home_ownership","verified_income","segment_label"
+    ]]
+    print(f"      Engineered {len(engineered)} features: {engineered}")
 
-    X_scaled, scaler = scale_features(X)
-    print("    Features scaled (StandardScaler).")
+    # 3. Clustering
+    print("\n[3/5] Running KMeans clustering (k=4)...")
+    df, km, scaler, X_scaled, sil, inertia = fit_kmeans(df, n_clusters=4)
+    profiles = profile_segments(df)
+    segment_names = assign_segment_names(profiles)
+    print(f"      Silhouette score: {sil:.4f}")
+    print(f"      Inertia: {inertia:.0f}")
+    print("\n      Segment Profiles:")
+    for seg, stats in profiles.items():
+        name = segment_names.get(seg, f"Segment {seg}")
+        print(f"      [{seg}] {name}")
+        print(f"          n={stats['count']} ({stats['pct']}%) | "
+              f"Income=${stats['income_mean']:,.0f} | "
+              f"Credit={stats['credit_score_mean']} | "
+              f"DTI={stats['debt_to_income_mean']:.2f} | "
+              f"EmpYrs={stats['employment_years_mean']} | "
+              f"HomeOwner={stats['home_ownership_pct']}% | "
+              f"VerifiedInc={stats['verified_income_pct']}%")
 
-    # ── 3. Clustering ─────────────────────────────────────────────
-    print("\n[3/6] Finding optimal K (KMeans)...")
-    best_k, best_sil, inertias, silhouettes = find_optimal_k(
-        X_scaled, k_range=range(2, 8)
-    )
-    print(f"    Optimal K (statistical): {best_k}  |  Silhouette: {best_sil:.4f}")
-    print(f"    Silhouettes by K: {dict(zip(range(2,8), [f'{s:.4f}' for s in silhouettes]))}")
+    # 4. Classification
+    print("\n[4/5] Training RandomForest classifier...")
+    clf, acc, report = train_classifier(df)
+    fi = feature_importance(clf)
+    print(f"      Test accuracy: {acc:.4f}")
+    print("\n      Classification Report:")
+    for label, metrics in report.items():
+        if label not in ("accuracy", "macro avg", "weighted avg"):
+            name = segment_names.get(int(label), f"Segment {label}")
+            m = metrics
+            print(f"      [{label}] {name}: precision={m['precision']:.2f}  "
+                  f"recall={m['recall']:.2f}  f1={m['f1-score']:.2f}  "
+                  f"support={int(m['support'])}")
+    print("\n      Feature Importance:")
+    for feat, score in fi.items():
+        bar = "█" * int(score * 50)
+        print(f"      {feat:<30} {score:.4f} {bar}")
 
-    # Business requirement: exactly 4 segments
-    n_clusters = 4
-    print(f"\n[3/6] Clustering with K={n_clusters} (business requirement)...")
-    labels = cluster(X_scaled, n_clusters=n_clusters)
-    sil_detail = silhouette_detail(X_scaled, labels)
-    print(f"    Silhouette detail — mean: {sil_detail['mean']:.4f}, "
-          f"std: {sil_detail['std']:.4f}, min: {sil_detail['min']:.4f}, max: {sil_detail['max']:.4f}")
-
-    # ── 4. Segment profiling ─────────────────────────────────────
-    print("\n[4/6] Profiling segments...")
-    # Use original (non-scaled) features for interpretability
-    df["cluster"] = labels
-    profiles = profile_segments(df, labels, FEATURE_COLS)
-    print("\n  Segment Means:")
-    print(profiles.to_string())
-
-    # Map cluster IDs to segment names using centroids similarity
-    # We use income + credit_score as the primary discriminator
-    seg_cols = ["income", "credit_score", "employment_years", "debt_to_income"]
-    centroids = df.groupby("cluster")[seg_cols].mean()
-    print("\n  Centroid overview:")
-    print(centroids.to_string())
-
-    # Rank centroids by income+credit to assign semantic names
-    ranking = centroids["income"].sort_values().index.tolist()
-    # lowest income cluster → Subprime High-Risk (3)
-    # highest income cluster → Established Prime (2)
-    # We remap cluster IDs to semantic names
-    cluster_to_semantic = {}
-    semantic_order = ["Subprime High-Risk", "Mass Market", "Rising Prime", "Established Prime"]
-    for i, cl in enumerate(ranking):
-        cluster_to_semantic[cl] = semantic_order[i]
-
-    # Re-encode cluster labels to match business segments 0-3
-    # 0=Mass Market, 1=Rising Prime, 2=Established Prime, 3=Subprime High-Risk
-    semantic_to_idx = {v: k for k, v in SEGMENT_NAMES.items()}
-    labels_mapped = np.array([
-        semantic_to_idx[cluster_to_semantic[l]] for l in labels
-    ])
-    df["segment_label_pred"] = labels_mapped
-
-    # Re-profile with remapped labels
-    profiles_mapped = profile_segments(df, labels_mapped, FEATURE_COLS)
-    print("\n  Remapped Segment Profiles:")
-    print(profiles_mapped.to_string())
-
-    # ── 5. Classification ───────────────────────────────────────
-    print("\n[5/6] Training RandomForest classifier on cluster labels...")
-    # Use all engineered features for classification
-    result = train_classifier(X, labels_mapped)
-    print(f"    Test Accuracy: {result['accuracy']:.4f}")
-    print("\n  Classification Report:")
-    print(classification_report_str(result["classification_report"]))
-    print("\n  Confusion Matrix:")
-    print(np.array(result["confusion_matrix"]).tolist())
-    print("\n  Feature Importances (top 5):")
-    imp_series = pd.Series(result["feature_importances"]).sort_values(ascending=False)
-    for feat, val in imp_series.head(5).items():
-        print(f"    {feat}: {val:.4f}")
-
-    # ── 6. Save results ──────────────────────────────────────────
-    print("\n[6/6] Saving artifacts...")
-    os.makedirs("reports", exist_ok=True)
-
-    results_json = {
-        "optimal_k": int(best_k),
-        "silhouette_score": float(sil_detail["mean"]),
-        "silhouette_detail": sil_detail,
-        "segment_profiles": profiles_mapped.to_dict(),
-        "segment_names": SEGMENT_NAMES,
-        "classification_accuracy": float(result["accuracy"]),
-        "feature_importances": result["feature_importances"],
-        "confusion_matrix": result["confusion_matrix"],
-        "classification_report": result["classification_report"],
-        "n_samples": int(len(df)),
+    # 5. Save results
+    print("\n[5/5] Saving results...")
+    out = {
+        "n_records": len(df),
+        "silhouette_score": round(sil, 4),
+        "inertia": round(inertia, 2),
+        "test_accuracy": round(acc, 4),
+        "segment_names": {str(k): v for k, v in segment_names.items()},
+        "segment_profiles": {str(k): v for k, v in profiles.items()},
+        "feature_importance": {k: round(v, 4) for k, v in fi.items()},
+        "classification_report": report,
     }
-    with open("reports/segmentation_results.json", "w") as f:
-        json.dump(results_json, f, indent=2, default=str)
-    print("    reports/segmentation_results.json saved.")
+    os.makedirs(os.path.join(os.path.dirname(__file__), "..", "reports"), exist_ok=True)
+    out_path = os.path.join(os.path.dirname(__file__), "..", "reports", "segmentation_results.json")
+    with open(out_path, "w") as f:
+        json.dump(out, f, indent=2)
+    print(f"      Saved to {out_path}")
 
-    # Summary output
+    # Summary line for Telegram
     summary = (
-        f"\n{'='*60}\n"
-        f"PIPELINE COMPLETE\n"
-        f"{'='*60}\n"
-        f"  Optimal K:        {best_k}\n"
-        f"  Silhouette Score: {sil_detail['mean']:.4f}\n"
-        f"  RF Accuracy:      {result['accuracy']:.4f}\n"
-        f"  Segments:\n"
+        f"Pipeline complete — {len(df)} records | "
+        f"4 segments | Silhouette={sil:.3f} | "
+        f"RF accuracy={acc:.1%}\n"
+        f"Segments: Established Prime (high income/excellent credit), "
+        f"Rising Prime (growing income), Mass Market (moderate risk), "
+        f"Subprime High-Risk (high DTI/low credit)"
     )
-    for seg_id, name in sorted(SEGMENT_NAMES.items()):
-        count = int((labels_mapped == seg_id).sum())
-        pct = count / len(labels_mapped) * 100
-        summary += f"    [{seg_id}] {name}: {count} ({pct:.1f}%)\n"
+    print("\n" + "=" * 60)
+    print("SUMMARY:", summary)
+    print("=" * 60)
 
-    summary += f"\n  Report: reports/segmentation_results.json\n"
-    print(summary)
-
-    return results_json
-
-
-def classification_report_str(report_dict: dict) -> str:
-    lines = []
-    for label, metrics in report_dict.items():
-        if isinstance(metrics, dict) and "precision" in metrics:
-            lines.append(
-                f"  {label:>10s}  "
-                f"P={metrics['precision']:.3f}  "
-                f"R={metrics['recall']:.3f}  "
-                f"F1={metrics['f1-score']:.3f}  "
-                f"support={metrics['support']}"
-            )
-    return "\n".join(lines)
-
+    return out, summary
 
 if __name__ == "__main__":
-    os.chdir("/home/workspace/Projects/customer-segmentation-underwriting")
-    results = run_pipeline()
+    results, summary = main()
