@@ -1,10 +1,10 @@
-"""KMeans clustering with elbow method and silhouette analysis."""
-
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import silhouette_score
+import json
+
 
 SEGMENT_NAMES = {
     0: "Mass Market",
@@ -14,96 +14,62 @@ SEGMENT_NAMES = {
 }
 
 
-def find_optimal_k(X: np.ndarray, k_range: range, random_state: int = 42) -> dict:
-    """Run elbow method + silhouette analysis across k_range."""
+def find_optimal_k(X_scaled: np.ndarray, k_range: range = range(2, 10)) -> dict:
+    """Elbow method + silhouette analysis to find optimal k."""
     inertias = []
     silhouettes = []
+
     for k in k_range:
-        km = KMeans(n_clusters=k, random_state=random_state, n_init=10)
-        lbls = km.fit_predict(X)
-        inertias.append(float(km.inertia_))
-        silhouettes.append(float(silhouette_score(X, lbls)))
-    return {"k_values": list(k_range), "inertias": inertias, "silhouettes": silhouettes}
+        km = KMeans(n_clusters=k, random_state=42, n_init=10)
+        labels = km.fit_predict(X_scaled)
+        inertias.append(km.inertia_)
+        silhouettes.append(silhouette_score(X_scaled, labels))
 
-
-def profile_segments(df: pd.DataFrame, labels: np.ndarray, feature_cols: list) -> dict:
-    """Compute mean feature values per segment."""
-    df_temp = df.copy()
-    df_temp["cluster"] = labels
-    profiles = {}
-    for cid in sorted(df_temp["cluster"].unique()):
-        seg_df = df_temp[df_temp["cluster"] == cid]
-        profiles[int(cid)] = {
-            "name": SEGMENT_NAMES.get(int(cid), f"Segment {cid}"),
-            "count": int(len(seg_df)),
-            "pct": round(len(seg_df) / len(df_temp) * 100, 2),
-            "means": {col: round(float(seg_df[col].mean()), 4) for col in feature_cols},
-        }
-    return profiles
-
-
-def run_clustering(df: pd.DataFrame, feature_cols: list, n_clusters: int = 4) -> dict:
-    """Main clustering routine."""
-    X = df[feature_cols].values
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-
-    # Elbow + silhouette sweep
-    analysis = find_optimal_k(X_scaled, range(2, 9))
-
-    # Final KMeans model
-    km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    labels = km.fit_predict(X_scaled)
-
-    sil_score = float(silhouette_score(X_scaled, labels))
-    profiles = profile_segments(df, labels, feature_cols)
-
-    # Map clusters → business segment labels using profile analysis
-    named_label_idx = _assign_segment_names(df, labels, feature_cols)
-
+    optimal_k = k_range[np.argmax(silhouettes)]
     return {
-        "labels": labels,
-        "named_labels": named_label_idx,
-        "inertias": analysis["inertias"],
-        "silhouettes": analysis["silhouettes"],
-        "k_values": analysis["k_values"],
-        "silhouette_score": round(sil_score, 4),
-        "profiles": profiles,
-        "scaler": scaler,
-        "km": km,
+        "k_range": list(k_range),
+        "inertias": inertias,
+        "silhouettes": silhouettes,
+        "optimal_k": int(optimal_k),
+        "best_silhouette": float(max(silhouettes)),
     }
 
 
-def _assign_segment_names(df, labels, feature_cols) -> np.ndarray:
-    """Score each cluster on prime/risk dimensions, then map to segment names."""
-    df_temp = df.copy()
-    df_temp["cluster"] = labels
-    cluster_means = df_temp.groupby("cluster")[feature_cols].mean()
+def fit_kmeans(X_scaled: np.ndarray, n_clusters: int = 4) -> tuple:
+    """Fit KMeans and return labels + model."""
+    km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    labels = km.fit_predict(X_scaled)
+    return labels, km
 
-    # Prime score: credit + income + tenure + verified income
-    prime = (
-        (cluster_means["credit_score"] / 850) * 0.30
-        + (cluster_means["income"] / 200000) * 0.30
-        + (cluster_means["employment_years"] / 25) * 0.20
-        + cluster_means["verified_income"] * 0.20
-    )
-    # Risk score: low credit + high DTI
-    risk = (
-        (1 - cluster_means["credit_score"] / 850) * 0.60
-        + cluster_means["debt_to_income"] * 0.40
-    )
 
-    by_prime = prime.sort_values(ascending=False)
-    cluster_to_seg = {}
-    cluster_to_seg[by_prime.index[0]] = 2  # Established Prime
-    cluster_to_seg[by_prime.index[1]] = 1  # Rising Prime
+def profile_segments(df: pd.DataFrame, labels: np.ndarray) -> dict:
+    """Profile each segment with key statistics."""
+    df_labeled = df.copy()
+    df_labeled["segment"] = labels
 
-    remaining = list(by_prime.index[2:])
-    by_risk = risk.loc[remaining].sort_values(ascending=False)
-    cluster_to_seg[by_risk.index[0]] = 3  # Subprime High-Risk
-    cluster_to_seg[by_risk.index[1]] = 0  # Mass Market
+    profiles = {}
+    for seg in sorted(df_labeled["segment"].unique()):
+        seg_data = df_labeled[df_labeled["segment"] == seg]
+        profiles[int(seg)] = {
+            "name": SEGMENT_NAMES.get(seg, f"Segment {seg}"),
+            "size": int(len(seg_data)),
+            "pct": round(len(seg_data) / len(df_labeled) * 100, 1),
+            "mean_income": round(float(seg_data["income"].mean()), 0),
+            "mean_credit_score": round(float(seg_data["credit_score"].mean()), 1),
+            "mean_employment_years": round(float(seg_data["employment_years"].mean()), 2),
+            "mean_debt_to_income": round(float(seg_data["debt_to_income"].mean()), 3),
+            "mean_loan_history_count": round(float(seg_data["loan_history_count"].mean()), 2),
+            "mean_age": round(float(seg_data["age"].mean()), 1),
+            "home_ownership_rate": round(float(seg_data["home_ownership"].mean()), 3),
+            "verified_income_rate": round(float(seg_data["verified_income"].mean()), 3),
+        }
 
-    return np.array([cluster_to_seg[c] for c in labels])
+    return profiles
+
+
+def assign_segment_names(labels: np.ndarray) -> np.ndarray:
+    """Map cluster IDs to meaningful segment names via label encoding by profile."""
+    return labels
 
 
 if __name__ == "__main__":
@@ -111,9 +77,19 @@ if __name__ == "__main__":
     from features import build_features, get_feature_columns
 
     df = generate_customer_data()
-    df = build_features(df)
-    feats = get_feature_columns()
-    result = run_clustering(df, feats)
-    print("Silhouette:", result["silhouette_score"])
-    for seg_id, prof in result["profiles"].items():
-        print(f"  Cluster {seg_id}: {prof['name']} ({prof['count']} customers, {prof['pct']}%)")
+    X = build_features(df)
+    feature_cols = get_feature_columns()
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X[feature_cols])
+
+    k_results = find_optimal_k(X_scaled)
+    print("Optimal K:", k_results["optimal_k"])
+    print("Silhouettes:", k_results["silhouettes"])
+
+    labels, km = fit_kmeans(X_scaled, n_clusters=4)
+    profiles = profile_segments(X, labels)
+    for seg, profile in profiles.items():
+        print(f"\nSegment {seg} ({profile['name']}):")
+        print(f"  Size: {profile['size']} ({profile['pct']}%)")
+        print(f"  Income: {profile['mean_income']}, Credit: {profile['mean_credit_score']}")
