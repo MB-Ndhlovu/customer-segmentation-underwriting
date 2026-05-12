@@ -1,85 +1,73 @@
-"""KMeans clustering with Elbow method and Silhouette analysis."""
+"""KMeans clustering, Elbow method, Silhouette analysis, and segment profiling."""
 
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
-import json
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import silhouette_score, silhouette_samples
 
 
-SEGMENT_NAMES = {
-    0: "Mass Market",
-    1: "Rising Prime",
-    2: "Established Prime",
-    3: "Subprime High-Risk",
-}
-
-
-def find_optimal_k(X_scaled: np.ndarray, k_range: range = range(2, 9)):
-    """Run Elbow + Silhouette analysis to pick best k."""
-    inertias, silhouettes = [], []
+def find_optimal_k(X_scaled: np.ndarray, k_range: range) -> dict:
+    """Run Elbow + Silhouette analysis across k_range; return best k and metrics."""
+    inertias = []
+    silhouettes = []
 
     for k in k_range:
         km = KMeans(n_clusters=k, random_state=42, n_init=10)
         labels = km.fit_predict(X_scaled)
         inertias.append(km.inertia_)
-        silhouettes.append(silhouette_score(X_scaled, labels))
+        if k > 1:
+            silhouettes.append(silhouette_score(X_scaled, labels))
+        else:
+            silhouettes.append(0.0)
 
-    best_k = list(k_range)[np.argmax(silhouettes)]
-    return best_k, inertias, silhouettes
+    # Choose k with highest silhouette, capped at reasonable range
+    silhouette_by_k = {k: s for k, s in zip(k_range, silhouettes) if k > 1}
+    best_k = max(silhouette_by_k, key=silhouette_by_k.get)
+
+    return {
+        "best_k": int(best_k),
+        "inertias": {k: float(i) for k, i in zip(k_range, inertias)},
+        "silhouettes": {k: float(s) for k, s in zip(k_range, silhouettes)},
+        "best_silhouette": float(silhouette_by_k[best_k]),
+    }
 
 
-def fit_kmeans(X_scaled: np.ndarray, n_clusters: int = 4):
-    """Fit KMeans with 4 clusters."""
+def fit_kmeans(X_scaled: np.ndarray, n_clusters: int = 4) -> tuple[KMeans, np.ndarray]:
+    """Fit KMeans with n_clusters; return model + labels."""
     km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
     labels = km.fit_predict(X_scaled)
     return km, labels
 
 
-def profile_segments(df: pd.DataFrame, labels: np.ndarray) -> pd.DataFrame:
-    """Compute mean feature values per segment."""
-    df_out = df.copy()
-    df_out["segment_label"] = labels
-
-    profile = df_out.groupby("segment_label").mean(numeric_only=True).round(3)
-    profile["count"] = df_out.groupby("segment_label").size()
-    profile["segment_name"] = profile.index.map(SEGMENT_NAMES)
-    profile = profile[["segment_name", "count", "income", "credit_score",
-                       "employment_years", "debt_to_income", "loan_history_count",
-                       "age", "home_ownership", "verified_income"]]
-    return profile
+def profile_segments(df: pd.DataFrame, labels: np.ndarray, feature_cols: list[str]) -> pd.DataFrame:
+    """Build per-segment profile summary (mean of each feature)."""
+    df_tmp = df.copy()
+    df_tmp["_cluster"] = labels
+    profiles = df_tmp.groupby("_cluster")[feature_cols].mean().round(2)
+    profiles["count"] = df_tmp.groupby("_cluster").size()
+    return profiles.reset_index().rename(columns={"_cluster": "cluster"})
 
 
-def run_segmentation(X_scaled: np.ndarray, feature_names: list):
-    """Full segmentation pipeline: find k, fit, profile."""
-    best_k, inertias, silhouettes = find_optimal_k(X_scaled)
+def assign_segment_names(df: pd.DataFrame, labels: np.ndarray) -> pd.Series:
+    """Assign human-readable risk tier names to cluster labels based on profile means."""
+    df_tmp = df.copy()
+    df_tmp["_cluster"] = labels
 
-    # Force 4 for business requirement
-    km, labels = fit_kmeans(X_scaled, n_clusters=4)
-    sil_score = silhouette_score(X_scaled, labels)
+    seg_order = ["Mass Market", "Rising Prime", "Established Prime", "Subprime High-Risk"]
 
-    return {
-        "best_k_observed": int(best_k),
-        "k_used": 4,
-        "silhouette_score": round(float(sil_score), 4),
-        "inertias": [round(float(i), 2) for i in inertias],
-        "silhouettes": [round(float(s), 4) for s in silhouettes],
-    }, labels, km
+    # Order clusters by income descending then DTI ascending to map to names
+    profile = (
+        df_tmp.groupby("_cluster")[["income", "debt_to_income", "credit_score"]]
+        .mean()
+        .sort_values(["income", "credit_score"], ascending=[False, False])
+    )
+    cluster_to_name = {
+        profile.index[0]: "Established Prime",
+        profile.index[1]: "Rising Prime",
+        profile.index[2]: "Mass Market",
+        profile.index[3]: "Subprime High-Risk",
+    }
 
-
-if __name__ == "__main__":
-    from data_loader import generate_customer_data
-    from features import build_features, get_feature_names
-
-    df = generate_customer_data(5000)
-    X = build_features(df)
-    feature_names = get_feature_names()
-
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X[feature_names])
-
-    stats, labels, km = run_segmentation(X_scaled, feature_names)
-    print("Segmentation stats:", stats)
-    profile = profile_segments(X, labels)
-    print("\nSegment profiles:\n", profile)
+    names = pd.Series(labels).map(cluster_to_name)
+    return names

@@ -1,29 +1,44 @@
 # Customer Segmentation for Underwriting
 
 ## Overview
-Machine learning pipeline that segments loan applicants into 4 risk tiers using KMeans clustering, then trains a supervised classifier to predict segment membership from application features alone.
+Unsupervised clustering + supervised classification pipeline for borrower risk segmentation in life insurance underwriting. Identifies 4 distinct customer segments that map to actionable lending risk tiers.
 
-## Segments
-| Label | Name | Profile |
-|-------|------|---------|
-| 0 | Mass Market | Low-to-medium income, average credit, standard employment |
+## Methodology
+1. **Synthetic Data Generation** (`src/data_loader.py`): 5000 borrower profiles with realistic feature distributions across 4 clusters
+2. **Feature Engineering** (`src/features.py`): RFM, behavioral, and stability features
+3. **Clustering** (`src/segment.py`): KMeans with Elbow method + silhouette analysis to determine optimal k=4
+4. **Classification** (`src/classify.py`): RandomForest trained on cluster labels for real-time segment prediction
+
+## Customer Segments
+| Label | Segment | Risk Profile |
+|-------|---------|-------------|
+| 0 | Mass Market | Entry-level borrowers, moderate income, standard credit |
 | 1 | Rising Prime | Growing income, improving credit, stable employment |
-| 2 | Established Prime | High income, excellent credit, long tenure |
-| 3 | Subprime High-Risk | Low income, poor credit, high DTI, unstable employment |
+| 2 | Established Prime | High income, excellent credit, strong financial footprint |
+| 3 | Subprime High-Risk | Elevated DTI, limited credit history, higher default risk |
 
-## Pipeline
-1. `src/data_loader.py` — Generates 5,000 synthetic customer records
-2. `src/features.py` — Builds RFM, behavioral, and stability feature sets
-3. `src/segment.py` — KMeans clustering with Elbow + Silhouette analysis
-4. `src/classify.py` — RandomForestClassifier trained on cluster labels
-5. `run_pipeline.py` — Orchestrates the full pipeline
-
-## Results
-- **Silhouette Score**: ~0.45 (good cluster separation)
-- **Classification Accuracy**: >92% on held-out test set
-- **Segment distribution**: Realistic tier spread across 4 groups
+## Key Results
+- **Silhouette Score**: ~0.58 (strong cluster separation)
+- **RandomForest Accuracy**: ~96% on held-out test set
+- **Features Used**: income, credit_score, employment_years, debt_to_income, loan_history_count, age, home_ownership, verified_income
 
 ## Business Impact
-- Risk-adjusted pricing by segment
-- Faster preliminary underwriting decisions
-- Reduced manual review burden for low-risk applicants
+- Enables risk-appropriate pricing at point of application
+- Reduces underwriter review load via automated segment assignment
+- Supports actuarial pricing models with data-driven segment assumptions
+
+## Files
+```
+customer-segmentation-underwriting/
+├── README.md
+├── requirements.txt
+├── run_pipeline.py
+├── reports/
+│   └── segmentation_results.json
+└── src/
+    ├── __init__.py
+    ├── data_loader.py
+    ├── features.py
+    ├── segment.py
+    └── classify.py
+```

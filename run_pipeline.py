@@ -1,129 +1,108 @@
-"""Execute the full customer segmentation pipeline."""
+"""Execute full customer segmentation pipeline: load -> engineer -> cluster -> classify -> report."""
 
 import json
+import sys
+from pathlib import Path
+
 import numpy as np
+import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
-from src.data_loader import generate_customer_data
-from src.features import build_features, get_feature_names
-from src.segment import run_segmentation, profile_segments, SEGMENT_NAMES
-from src.classify import train_classifier
+sys.path.insert(0, str(Path(__file__).parent))
+
+from src import data_loader, features, segment, classify
+
+REPORTS_DIR = Path(__file__).parent / "reports"
+REPORTS_DIR.mkdir(exist_ok=True)
 
 
 def run():
     print("=" * 60)
-    print("CUSTOMER SEGMENTATION PIPELINE")
+    print("CUSTOMER SEGMENTATION PIPELINE — UNDERWRITING")
     print("=" * 60)
 
     # 1. Load data
-    print("\n[1] Generating 5000 synthetic customer records...")
-    df = generate_customer_data(5000)
-    print(f"    Records: {len(df)}")
+    print("\n[1/5] Generating synthetic customer data (n=5000)...")
+    df = data_loader.generate_customer_data(5000)
+    print(f"    Rows: {len(df)}")
+    print(f"    True segment distribution:\n{df['segment_label'].value_counts().sort_index().to_string()}")
 
     # 2. Feature engineering
-    print("\n[2] Building features...")
-    X = build_features(df)
-    feature_names = get_feature_names()
-    print(f"    Features: {len(feature_names)}")
+    print("\n[2/5] Engineering features...")
+    df = features.build_features(df)
+    feature_cols = features.get_feature_cols()
+    print(f"    Features: {feature_cols}")
 
-    # 3. Scale
-    print("\n[3] Scaling features...")
+    X = df[feature_cols]
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X[feature_names])
-    print("    Done.")
+    X_scaled = scaler.fit_transform(X)
 
-    # 4. Segmentation
-    print("\n[4] Running KMeans segmentation...")
-    seg_stats, labels, km = run_segmentation(X_scaled, feature_names)
-    print(f"    Silhouette Score: {seg_stats['silhouette_score']}")
-    print(f"    Clusters used: {seg_stats['k_used']}")
+    # 3. Clustering
+    print("\n[3/5] Finding optimal K (Elbow + Silhouette)...")
+    opt = segment.find_optimal_k(X_scaled, k_range=range(2, 8))
+    best_k = opt["best_k"]
+    print(f"    Optimal K: {best_k}  (silhouette={opt['best_silhouette']:.4f})")
 
-    # 5. Profile segments
-    print("\n[5] Profiling segments...")
-    profile = profile_segments(X, labels)
+    print("\n[3/5] Fitting KMeans (k=4)...")
+    km, labels = segment.fit_kmeans(X_scaled, n_clusters=4)
 
-    segment_counts = X.copy()
-    segment_counts["segment_label"] = labels
-    counts = segment_counts.groupby("segment_label").size().to_dict()
+    # Profile clusters
+    profiles = segment.profile_segments(df, labels, feature_cols)
+    df["predicted_cluster"] = labels
+    df["segment_name"] = segment.assign_segment_names(df, labels)
 
-    profile_data = {}
-    for idx, row in profile.iterrows():
-        profile_data[int(idx)] = {
-            "name": SEGMENT_NAMES[int(idx)],
-            "count": int(row["count"]),
-            "pct": round(float(row["count"]) / 5000 * 100, 1),
-            "income_mean": float(row["income"]),
-            "credit_score_mean": float(row["credit_score"]),
-            "employment_years_mean": float(row["employment_years"]),
-            "debt_to_income_mean": float(row["debt_to_income"]),
-            "loan_history_count_mean": float(row["loan_history_count"]),
-            "age_mean": float(row["age"]),
-            "home_ownership_rate": round(float(row["home_ownership"]), 3),
-            "verified_income_rate": round(float(row["verified_income"]), 3),
-        }
+    print("\n    Cluster profiles (mean values):")
+    for _, row in profiles.iterrows():
+        print(
+            f"    Cluster {int(row['cluster'])}: "
+            f"income={row['income']:.0f}, credit={row['credit_score']:.0f}, "
+            f"DTI={row['debt_to_income']:.2f}, n={int(row['count'])}"
+        )
 
-    print("\n  Segment Distribution:")
-    for seg_id, info in profile_data.items():
-        print(f"    [{seg_id}] {info['name']:25s} — {info['count']:4d} ({info['pct']}%)  "
-              f"income={int(info['income_mean']):6d}  credit={int(info['credit_score_mean']):4d}  "
-              f"DTI={info['debt_to_income_mean']:.2f}")
+    # 4. Classification
+    print("\n[4/5] Training RandomForest classifier on cluster labels...")
+    result = classify.train_classifier(X, labels)
+    print(f"    Test accuracy: {result['accuracy']:.4f}")
+    print(f"    Train/Test: {result['train_size']}/{result['test_size_n']}")
 
-    # 6. Classification
-    print("\n[6] Training RandomForest classifier...")
-    # Use raw features only (what's available at application time)
-    raw_features = feature_names[:8]
-    clf_results, clf = train_classifier(X, labels, raw_features)
-    print(f"    Test Accuracy: {clf_results['accuracy']}")
-    print(f"    Train/Test split: {clf_results['train_size']}/{clf_results['test_size']}")
+    top_features = sorted(
+        result["feature_importance"].items(), key=lambda x: x[1], reverse=True
+    )[:5]
+    print("    Top 5 features by importance:")
+    for feat, imp in top_features:
+        print(f"      {feat}: {imp:.4f}")
 
-    print("\n  Top 5 Predictive Features:")
-    top_feats = sorted(clf_results["feature_importance"].items(), key=lambda x: -x[1])[:5]
-    for feat, imp in top_feats:
-        print(f"    {feat:25s}  {imp:.4f}")
-
-    # 7. Assemble report
-    print("\n[7] Saving results...")
+    # 5. Save results
+    print("\n[5/5] Saving reports...")
     report = {
-        "pipeline_version": "1.0",
-        "n_records": 5000,
-        "n_features": len(feature_names),
-        "segmentation": {
-            "method": "KMeans",
-            "n_clusters": 4,
-            "silhouette_score": seg_stats["silhouette_score"],
-            "segment_names": SEGMENT_NAMES,
-        },
-        "segment_profiles": profile_data,
-        "classification": {
-            "model": "RandomForestClassifier",
-            "n_estimators": 200,
-            "max_depth": 10,
-            "test_accuracy": clf_results["accuracy"],
-            "train_size": clf_results["train_size"],
-            "test_size": clf_results["test_size"],
-            "features_used": raw_features,
-            "feature_importance": clf_results["feature_importance"],
-        },
+        "optimal_k": best_k,
+        "best_silhouette": opt["best_silhouette"],
+        "silhouettes_by_k": opt["silhouettes"],
+        "inertias_by_k": opt["inertias"],
+        "cluster_profiles": profiles.to_dict(orient="records"),
+        "segment_names": df["segment_name"].value_counts().to_dict(),
+        "classification_accuracy": result["accuracy"],
+        "classification_report": result["classification_report"],
+        "feature_importance": result["feature_importance"],
+        "n_samples": len(df),
+        "features_used": feature_cols,
     }
 
-    import os
-    os.makedirs("reports", exist_ok=True)
-    with open("reports/segmentation_results.json", "w") as f:
-        json.dump(report, f, indent=2)
-    print("    Saved: reports/segmentation_results.json")
+    out_path = REPORTS_DIR / "segmentation_results.json"
+    with open(out_path, "w") as f:
+        json.dump(report, f, indent=2, default=str)
 
-    # 8. Summary
+    print(f"    Saved: {out_path}")
+
+    # Summary print
     print("\n" + "=" * 60)
-    print("SUMMARY")
+    print("PIPELINE COMPLETE")
     print("=" * 60)
-    print(f"  Records processed : 5000")
-    print(f"  Features used     : {len(feature_names)} total, {len(raw_features)} for classification")
-    print(f"  Silhouette Score  : {seg_stats['silhouette_score']} (cluster separation)")
-    print(f"  Classifier Acc   : {clf_results['accuracy']} (predict segment from app data)")
-    print(f"\n  Segments:")
-    for seg_id, info in profile_data.items():
-        print(f"    [{seg_id}] {info['name']:22s}  n={info['count']:4d}  "
-              f"income={int(info['income_mean']):6d}  credit={int(info['credit_score_mean']):4d}")
+    print(f"  Samples:          5000")
+    print(f"  Clusters (K):     4")
+    print(f"  Best silhouette:  {opt['best_silhouette']:.4f}")
+    print(f"  RF accuracy:      {result['accuracy']:.4f}")
+    print(f"  Segments:         {list(df['segment_name'].value_counts().index)}")
     print("=" * 60)
 
     return report

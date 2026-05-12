@@ -1,32 +1,53 @@
-"""Feature engineering for customer segmentation."""
+"""Feature engineering for underwriting segmentation."""
 
 import pandas as pd
 import numpy as np
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Derive RFM, behavioral, and stability features from raw customer data."""
-    X = df.copy()
+    """Add engineered features to the customer DataFrame.
 
-    # Stability features
-    X["emp_income_ratio"] = X["employment_years"] / (X["income"] / 10000 + 1)
-    X["credit_per_age"] = X["credit_score"] / (X["age"] - 17)
-    X["DTI_stability"] = (0.35 - X["debt_to_income"]).clip(lower=0)
+    RFM-inspired features (Recency approximated via loan history depth):
+        - loan_velocity: loan_history_count / years employed
+        - income_per_employment_year: income / max(1, employment_years)
 
-    # Behavioral features
-    X["loan_density"] = X["loan_history_count"] / (X["age"] - 17 + 1)
-    X["income_per_loan"] = X["income"] / (X["loan_history_count"] + 1)
-    X["credit_utilization_proxy"] = (X["debt_to_income"] * X["income"]) / (X["credit_score"] + 1)
+    Behavioral features:
+        - credit_to_income_ratio: credit_score / income (scaled)
+        - employment_stability: tanh(employment_years / 10)  # 0-1 scale
 
-    # Verified income flags
-    X["verified_strong"] = ((X["verified_income"] == 1) & (X["income"] > 60000)).astype(int)
-    X["verified_with_credit"] = ((X["verified_income"] == 1) & (X["credit_score"] > 680)).astype(int)
+    Stability features:
+        - dti_band: ordinal bands for debt-to-income risk buckets
+        - verified_bonus: +1 when income is verified (stronger underwriting signal)
+    """
+    df = df.copy()
 
-    return X
+    # RFM-inspired
+    df["loan_velocity"] = df["loan_history_count"] / df["employment_years"].clip(lower=0.1)
+    df["income_per_year"] = df["income"] / df["employment_years"].clip(lower=0.5)
+
+    # Behavioral
+    df["credit_income_ratio"] = df["credit_score"] / (df["income"] / 10_000)
+    df["employment_stability"] = np.tanh(df["employment_years"] / 10)
+
+    # Stability bands
+    def dti_band(dti):
+        if dti < 0.20:
+            return 0
+        elif dti < 0.35:
+            return 1
+        elif dti < 0.50:
+            return 2
+        else:
+            return 3
+
+    df["dti_band"] = df["debt_to_income"].apply(dti_band)
+    df["verified_bonus"] = df["verified_income"]
+
+    return df
 
 
-def get_feature_names() -> list:
-    """Return list of features used for clustering/classification."""
+def get_feature_cols() -> list[str]:
+    """Return the list of features used for clustering and classification."""
     return [
         "income",
         "credit_score",
@@ -36,21 +57,10 @@ def get_feature_names() -> list:
         "age",
         "home_ownership",
         "verified_income",
-        "emp_income_ratio",
-        "credit_per_age",
-        "DTI_stability",
-        "loan_density",
-        "income_per_loan",
-        "credit_utilization_proxy",
-        "verified_strong",
-        "verified_with_credit",
+        "loan_velocity",
+        "income_per_year",
+        "credit_income_ratio",
+        "employment_stability",
+        "dti_band",
+        "verified_bonus",
     ]
-
-
-if __name__ == "__main__":
-    from data_loader import generate_customer_data
-
-    df = generate_customer_data(5000)
-    X = build_features(df)
-    print(f"Feature matrix shape: {X.shape}")
-    print(X.describe().round(3))
