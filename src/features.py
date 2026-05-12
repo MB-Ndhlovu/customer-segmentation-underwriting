@@ -5,34 +5,52 @@ import numpy as np
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Engineer RFM, behavioral, and stability features.
-    Returns DataFrame with original columns plus engineered features.
-    """
-    df = df.copy()
-
-    # RFM-style features
-    df["income_per_year"] = df["income"] / (df["employment_years"] + 1)
-    df["credit_per_age"] = df["credit_score"] / df["age"]
-
-    # Behavioral features
-    df["loan_density"] = df["loan_history_count"] / (df["age"] - 18 + 1)
-    df["has_history"] = (df["loan_history_count"] > 0).astype(int)
+    """Derive RFM, behavioral, and stability features from raw customer data."""
+    X = df.copy()
 
     # Stability features
-    df["employment_stability"] = df["employment_years"] / df["age"]
-    df["income_stability"] = df["verified_income"] * df["credit_score"] / 100
+    X["emp_income_ratio"] = X["employment_years"] / (X["income"] / 10000 + 1)
+    X["credit_per_age"] = X["credit_score"] / (X["age"] - 17)
+    X["DTI_stability"] = (0.35 - X["debt_to_income"]).clip(lower=0)
 
-    # Debt burden flags
-    df["high_dti"] = (df["debt_to_income"] > 0.36).astype(int)
-    df["low_credit"] = (df["credit_score"] < 580).astype(int)
+    # Behavioral features
+    X["loan_density"] = X["loan_history_count"] / (X["age"] - 17 + 1)
+    X["income_per_loan"] = X["income"] / (X["loan_history_count"] + 1)
+    X["credit_utilization_proxy"] = (X["debt_to_income"] * X["income"]) / (X["credit_score"] + 1)
 
-    return df
+    # Verified income flags
+    X["verified_strong"] = ((X["verified_income"] == 1) & (X["income"] > 60000)).astype(int)
+    X["verified_with_credit"] = ((X["verified_income"] == 1) & (X["credit_score"] > 680)).astype(int)
+
+    return X
 
 
-FEATURE_COLS = [
-    "income", "credit_score", "employment_years", "debt_to_income",
-    "loan_history_count", "age", "home_ownership", "verified_income",
-    "income_per_year", "credit_per_age", "loan_density", "has_history",
-    "employment_stability", "income_stability", "high_dti", "low_credit",
-]
+def get_feature_names() -> list:
+    """Return list of features used for clustering/classification."""
+    return [
+        "income",
+        "credit_score",
+        "employment_years",
+        "debt_to_income",
+        "loan_history_count",
+        "age",
+        "home_ownership",
+        "verified_income",
+        "emp_income_ratio",
+        "credit_per_age",
+        "DTI_stability",
+        "loan_density",
+        "income_per_loan",
+        "credit_utilization_proxy",
+        "verified_strong",
+        "verified_with_credit",
+    ]
+
+
+if __name__ == "__main__":
+    from data_loader import generate_customer_data
+
+    df = generate_customer_data(5000)
+    X = build_features(df)
+    print(f"Feature matrix shape: {X.shape}")
+    print(X.describe().round(3))
