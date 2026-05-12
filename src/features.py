@@ -1,53 +1,50 @@
-"""Feature engineering for underwriting segmentation."""
+"""Feature engineering: RFM, behavioral, and stability features."""
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add engineered features to the customer DataFrame.
-
-    RFM-inspired features (Recency approximated via loan history depth):
-        - loan_velocity: loan_history_count / years employed
-        - income_per_employment_year: income / max(1, employment_years)
-
-    Behavioral features:
-        - credit_to_income_ratio: credit_score / income (scaled)
-        - employment_stability: tanh(employment_years / 10)  # 0-1 scale
-
-    Stability features:
-        - dti_band: ordinal bands for debt-to-income risk buckets
-        - verified_bonus: +1 when income is verified (stronger underwriting signal)
-    """
+    """Add engineered features to the customer dataframe."""
     df = df.copy()
 
-    # RFM-inspired
-    df["loan_velocity"] = df["loan_history_count"] / df["employment_years"].clip(lower=0.1)
-    df["income_per_year"] = df["income"] / df["employment_years"].clip(lower=0.5)
+    # Encode home_ownership
+    home_map = {"own": 2, "rent": 1, "none": 0}
+    df["home_ownership_enc"] = df["home_ownership"].map(home_map)
 
-    # Behavioral
-    df["credit_income_ratio"] = df["credit_score"] / (df["income"] / 10_000)
-    df["employment_stability"] = np.tanh(df["employment_years"] / 10)
+    # Income stability proxy: verified income + home ownership
+    df["income_stability_score"] = (
+        df["verified_income"] * 2 + df["home_ownership_enc"]
+    )
 
-    # Stability bands
-    def dti_band(dti):
-        if dti < 0.20:
-            return 0
-        elif dti < 0.35:
-            return 1
-        elif dti < 0.50:
-            return 2
-        else:
-            return 3
+    # Debt burden indicator
+    df["high_dti_flag"] = (df["debt_to_income"] > 0.36).astype(int)
 
-    df["dti_band"] = df["debt_to_income"].apply(dti_band)
-    df["verified_bonus"] = df["verified_income"]
+    # Credit quality bucket
+    df["credit_bucket"] = pd.cut(
+        df["credit_score"],
+        bins=[0, 580, 670, 740, 850],
+        labels=[0, 1, 2, 3],
+    ).astype(int)
+
+    # Employment tenure score
+    df["employment_tenure_score"] = np.clip(df["employment_years"] / 10, 0, 1)
+
+    # Loan burden ratio
+    df["loan_burden_ratio"] = df["loan_history_count"] / (df["age"] - 17)
+    df["loan_burden_ratio"] = df["loan_burden_ratio"].clip(0, 1)
+
+    # Income per age year (normalised earning power)
+    df["income_age_ratio"] = df["income"] / df["age"]
+
+    # Log income for scaling (right-skewed)
+    df["log_income"] = np.log1p(df["income"])
 
     return df
 
 
-def get_feature_cols() -> list[str]:
-    """Return the list of features used for clustering and classification."""
+def get_feature_columns() -> list:
+    """Return the list of features used for clustering / classification."""
     return [
         "income",
         "credit_score",
@@ -55,12 +52,13 @@ def get_feature_cols() -> list[str]:
         "debt_to_income",
         "loan_history_count",
         "age",
-        "home_ownership",
+        "home_ownership_enc",
         "verified_income",
-        "loan_velocity",
-        "income_per_year",
-        "credit_income_ratio",
-        "employment_stability",
-        "dti_band",
-        "verified_bonus",
+        "income_stability_score",
+        "high_dti_flag",
+        "credit_bucket",
+        "employment_tenure_score",
+        "loan_burden_ratio",
+        "income_age_ratio",
+        "log_income",
     ]

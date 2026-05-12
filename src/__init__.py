@@ -1,1 +1,1 @@
-"""Customer Segmentation for Underwriting — source package."""
+"""Customer Segmentation for Underwriting — ML Pipeline."""
