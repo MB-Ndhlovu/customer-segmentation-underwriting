@@ -1,47 +1,38 @@
-import numpy as np
+"""Feature engineering for customer segmentation."""
+
 import pandas as pd
+import numpy as np
 
-def build_features(df):
+
+def build_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Engineer RFM, behavioral, and stability features.
+    Returns DataFrame with original columns plus engineered features.
+    """
     df = df.copy()
-    
-    # Encode home_ownership
-    home_map = {'rent': 0, 'lease': 1, 'own': 2, 'mortgage': 3}
-    df['home_ownership_enc'] = df['home_ownership'].map(home_map).fillna(0)
-    df['verified_income_enc'] = df['verified_income'].astype(int)
-    
-    # RFM-style features
-    df['income_per_age'] = df['income'] / df['age'].clip(lower=18)
-    df['income_credit_ratio'] = df['income'] / df['credit_score'].clip(lower=1)
-    
-    # Stability features
-    df['emp_stability'] = df['employment_years'] * (df['verified_income_enc'] + 1)
-    df['credit_per_emp_year'] = df['credit_score'] / df['employment_years'].clip(lower=0.5)
-    
-    # Behavioral features
-    df['loan_density'] = df['loan_history_count'] / df['age'].clip(lower=18)
-    df['dti_risk_flag'] = (df['debt_to_income'] > 0.40).astype(int)
-    df['credit_risk_flag'] = (df['credit_score'] < 600).astype(int)
-    
-    # Composite risk score
-    df['risk_score'] = (
-        (df['debt_to_income'] * 100).clip(0, 50) +
-        (1 - df['credit_score'] / 850) * 100 +
-        (1 - df['verified_income_enc']) * 20 +
-        df['loan_history_count'] * 3
-    )
-    
-    feature_cols = [
-        'income', 'credit_score', 'employment_years', 'debt_to_income',
-        'loan_history_count', 'age', 'home_ownership_enc', 'verified_income_enc',
-        'income_per_age', 'income_credit_ratio', 'emp_stability',
-        'credit_per_emp_year', 'loan_density', 'dti_risk_flag',
-        'credit_risk_flag', 'risk_score'
-    ]
-    
-    return df[feature_cols]
 
-if __name__ == "__main__":
-    from data_loader import generate_customers
-    df = generate_customers()
-    X = build_features(df)
-    print(X.describe())
+    # RFM-style features
+    df["income_per_year"] = df["income"] / (df["employment_years"] + 1)
+    df["credit_per_age"] = df["credit_score"] / df["age"]
+
+    # Behavioral features
+    df["loan_density"] = df["loan_history_count"] / (df["age"] - 18 + 1)
+    df["has_history"] = (df["loan_history_count"] > 0).astype(int)
+
+    # Stability features
+    df["employment_stability"] = df["employment_years"] / df["age"]
+    df["income_stability"] = df["verified_income"] * df["credit_score"] / 100
+
+    # Debt burden flags
+    df["high_dti"] = (df["debt_to_income"] > 0.36).astype(int)
+    df["low_credit"] = (df["credit_score"] < 580).astype(int)
+
+    return df
+
+
+FEATURE_COLS = [
+    "income", "credit_score", "employment_years", "debt_to_income",
+    "loan_history_count", "age", "home_ownership", "verified_income",
+    "income_per_year", "credit_per_age", "loan_density", "has_history",
+    "employment_stability", "income_stability", "high_dti", "low_credit",
+]
