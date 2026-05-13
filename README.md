@@ -1,50 +1,55 @@
 # Customer Segmentation for Underwriting
 
-## Overview
-
-This project builds a data-driven customer segmentation system for loan underwriting using **unsupervised clustering** (KMeans) followed by a **supervised classifier** to predict segment membership from application features.
-
-## Approach
-
-1. **Synthetic Data Generation**: 5,000 customer records with realistic distributions across 4 segments
-2. **Feature Engineering**: RFM-style, behavioral, and stability features
-3. **Clustering**: KMeans (k=4) with silhouette analysis to validate cluster separation
-4. **Classification**: RandomForest trained on cluster labels — enables real-time segment prediction for new applicants
+A machine learning pipeline that segments loan applicants into 4 distinct risk categories using KMeans clustering, then trains a supervised classifier for real-time segment prediction.
 
 ## Segments
 
-| Label | Name | Profile |
-|-------|------|---------|
-| 0 | Mass Market | Moderate income, average credit, standard risk |
-| 1 | Rising Prime | Growing income, improving credit, low debt |
-| 2 | Established Prime | High income, excellent credit, stable employment, low debt |
-| 3 | Subprime High-Risk | Low income, poor credit, high debt-to-income, unstable employment |
+| Segment | Description | Risk Profile |
+|---------|-------------|--------------|
+| **Mass Market** | Largest segment (~45%), moderate income/credit | Standard underwriting |
+| **Rising Prime** | Growing borrowers with improving credit | Favorable terms eligible |
+| **Established Prime** | High income, strong credit history | Premium products |
+| **Subprime High-Risk** | Low credit scores, high DTI, unstable employment | Enhanced scrutiny required |
 
-## Results
-
-- **Silhouette Score**: ~0.42–0.48 (good cluster separation)
-- **Classifier Accuracy**: ~93–97% (strong predictive power)
-
-## Files
+## Architecture
 
 ```
-customer-segmentation-underwriting/
-├── README.md
-├── requirements.txt
-├── run_pipeline.py
-├── src/
-│   ├── __init__.py
-│   ├── data_loader.py    # Synthetic data generation
-│   ├── features.py      # Feature engineering
-│   ├── segment.py        # KMeans + profiling
-│   └── classify.py       # RandomForest classifier
+run_pipeline.py
+├── src/data_loader.py   — Synthetic dataset (5000 rows)
+├── src/features.py      — RFM, behavioral, stability features
+├── src/segment.py       — KMeans clustering + profiling
+├── src/classify.py      — RandomForest supervised classifier
 └── reports/
     └── segmentation_results.json
 ```
 
+## Features
+
+**Raw Features:** income, credit_score, employment_years, debt_to_income, loan_history_count, age, home_ownership, verified_income
+
+**Engineered Features:**
+- RFM: loan_frequency, income_per_employment_year, credit_per_age
+- Behavioral: debt_burden, employment_stability, credit_to_income_ratio, loan_density
+- Stability: income_stability_score, credit_quality_indicator, debt_capacity
+
+## Results
+
+- **Dataset:** 5,000 synthetic customers across 4 segments
+- **Clustering:** KMeans (k=4) with StandardScaler normalization
+- **Classifier:** RandomForest (100 estimators, ~95%+ accuracy)
+- **Target:** segment_label (0-3 from KMeans → actual segment name)
+
+## Usage
+
+```bash
+cd /home/workspace/Projects/customer-segmentation-underwriting
+pip install -r requirements.txt
+python run_pipeline.py
+```
+
 ## Business Impact
 
-- Enables **risk-tiered underwriting** by routing applications to appropriate evaluation criteria
-- **Rising Prime** and **Established Prime** segments qualify for streamlined approval
-- **Subprime High-Risk** applicants receive enhanced scrutiny or alternative products
-- The supervised classifier allows **real-time scoring** at point of application without running clustering each time
+- Enables real-time segment prediction at loan application intake
+- Supports differentiated underwriting strategies per segment
+- Identifies high-risk applicants early in the pipeline
+- Targets premium products to established prime customers
