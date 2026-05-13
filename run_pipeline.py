@@ -1,130 +1,113 @@
-import json
-import os
-from sklearn.preprocessing import StandardScaler
+"""Execute full customer segmentation pipeline."""
 
-from src.data_loader import generate_customer_data
+import json
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import silhouette_score
+
+from src.data_loader import load_customer_data
 from src.features import build_features, get_feature_columns
-from src.segment import find_optimal_k, fit_kmeans, profile_segments, SEGMENT_NAMES
+from src.segment import find_optimal_k, fit_kmeans, profile_segments
 from src.classify import train_classifier
+
+
+SEGMENT_NAMES = {
+    0: "Mass Market",
+    1: "Rising Prime",
+    2: "Established Prime",
+    3: "Subprime High-Risk",
+}
 
 
 def main():
     print("=" * 60)
-    print("CUSTOMER SEGMENTATION PIPELINE FOR UNDERWRITING")
+    print("CUSTOMER SEGMENTATION FOR UNDERWRITING — PIPELINE")
     print("=" * 60)
 
     # 1. Load data
-    print("\n[1/5] Generating synthetic customer data (n=5000)...")
-    df = generate_customer_data(n=5000)
-    print(f"  Data shape: {df.shape}")
+    print("\n[1/5] Loading data...")
+    df = load_customer_data(n_rows=5000)
+    print(f"  Generated {len(df)} rows")
 
-    # 2. Build features
+    # 2. Feature engineering
     print("\n[2/5] Engineering features...")
-    X = build_features(df)
-    feature_cols = get_feature_columns()
-    print(f"  Features: {feature_cols}")
+    df = build_features(df)
+    feat_cols = get_feature_columns()
+    print(f"  Feature columns: {feat_cols}")
 
-    # 3. Scale and cluster
-    print("\n[3/5] Finding optimal K (elbow + silhouette)...")
+    X = df[feat_cols].values
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X[feature_cols])
+    X_scaled = scaler.fit_transform(X)
 
-    k_results = find_optimal_k(X_scaled, k_range=range(2, 8))
-    print(f"  K range tested: {k_results['k_range']}")
-    print(f"  Silhouette scores: {[round(s, 4) for s in k_results['silhouettes']]}")
-    print(f"  Optimal K (max silhouette): {k_results['optimal_k']}")
-    print(f"  Best silhouette score: {k_results['best_silhouette']:.4f}")
+    # 3. Clustering
+    print("\n[3/5] KMeans clustering (k=4)...")
+    k_opt, diag = find_optimal_k(X_scaled, range(2, 11))
+    print(f"  Optimal k detected: {k_opt}")
 
-    # Force 4 clusters for business requirement
-    n_clusters = 4
-    print(f"\n[3b/5] Fitting KMeans with k={n_clusters}...")
-    labels, km = fit_kmeans(X_scaled, n_clusters=n_clusters)
-    X["segment_label"] = labels
+    km, labels = fit_kmeans(X_scaled, n_clusters=4)
+    sil = silhouette_score(X_scaled, labels)
+    print(f"  Silhouette Score: {sil:.4f}")
 
-    # 4. Profile segments
-    print("\n[4/5] Profiling segments...")
-    profiles = profile_segments(X, labels)
+    # Profile clusters
+    profile = profile_segments(df, labels, feat_cols)
+    print("\n  Cluster Profiles (mean values):")
+    print(profile.to_string())
 
-    # Sort segments by credit score (ascending) then DTI (descending) for business clarity
-    # Low credit + high DTI = Subprime High-Risk
-    # Low credit + low DTI = Mass Market
-    # Mid credit + mid DTI = Rising Prime
-    # High credit + low DTI = Established Prime
-    credit_order = sorted(profiles.keys(), key=lambda k: (profiles[k]["mean_credit_score"], -profiles[k]["mean_debt_to_income"]))
+    # Remap clusters to business-friendly segment names
+    # Determine mapping by looking at centroids
+    centroids = km.cluster_centers_
+    # centroid order in scaled space correlates with segment tiers
+    # Find cluster order: most negative = lowest income/credit, most positive = highest
+    cluster_means = df.groupby(labels)[feat_cols].mean()
+    # Map cluster indices to business segment order
+    # 0=Mass Market, 1=Rising Prime, 2=Established Prime, 3=Subprime High-Risk
+    # Order by: credit_score + income descending = best to worst
+    tier_order = cluster_means.sort_values(
+        by=["credit_score", "income"], ascending=False
+    ).index.tolist()
+    # Map: best cluster → Established Prime, 2nd best → Rising Prime, ...
+    reverse_tier = {v: i for i, v in enumerate(tier_order)}
+    segment_labels = np.array([reverse_tier[c] for c in labels])
+    df["segment_label"] = segment_labels
 
-    business_names = ["Subprime High-Risk", "Mass Market", "Rising Prime", "Established Prime"]
-    segment_mapping = {}
-    for new_id, seg_key in enumerate(credit_order):
-        profiles[seg_key]["name"] = business_names[new_id]
-        profiles[seg_key]["cluster_id"] = int(seg_key)
-        profiles[seg_key]["business_segment_id"] = new_id
-        segment_mapping[seg_key] = new_id
-
-    print("\n  Segment Profiles:")
-    print("  " + "-" * 56)
-    for seg_key in sorted(profiles.keys(), key=lambda k: profiles[k]["mean_income"]):
-        p = profiles[seg_key]
-        print(f"  {p['name']}: n={p['size']} ({p['pct']}%) | "
-              f"Income=${p['mean_income']:,.0f} | "
-              f"Credit={p['mean_credit_score']:.0f} | "
-              f"DTI={p['mean_debt_to_income']:.2f}")
-
-    # 5. Train classifier
-    print("\n[5/5] Training RandomForest classifier...")
-    # Map labels to business segment IDs
-    business_labels = X["segment_label"].map(lambda x: segment_mapping[x]).values
-    clf_result = train_classifier(X, business_labels, feature_cols)
-    print(f"  Accuracy: {clf_result['accuracy']:.4f}")
-    print("\n  Feature Importances:")
+    # 4. Classification
+    print("\n[4/5] Training RandomForest classifier...")
+    clf_results = train_classifier(X, segment_labels, feat_cols)
+    print(f"  Test Accuracy: {clf_results['accuracy']:.2%}")
+    print(f"  Feature Importances:")
     for feat, imp in sorted(
-        clf_result["feature_importances"].items(), key=lambda x: -x[1]
+        clf_results["feature_importances"].items(), key=lambda x: -x[1]
     ):
-        print(f"    {feat}: {imp:.4f}")
+        print(f"    {feat}: {imp}")
 
-    # Save results
-    os.makedirs("reports", exist_ok=True)
+    # 5. Save results
+    print("\n[5/5] Saving results...")
     results = {
-        "k_analysis": {
-            "k_range": k_results["k_range"],
-            "silhouette_scores": k_results["silhouettes"],
-            "optimal_k": k_results["optimal_k"],
-            "best_silhouette": k_results["best_silhouette"],
-        },
-        "clustering": {
-            "n_clusters": n_clusters,
-            "model": "KMeans",
-        },
-        "segments": profiles,
-        "classification": {
-            "model": "RandomForestClassifier",
-            "accuracy": clf_result["accuracy"],
-            "feature_importances": clf_result["feature_importances"],
-        },
+        "n_customers": int(len(df)),
+        "n_features": len(feat_cols),
+        "silhouette_score": round(sil, 4),
+        "optimal_k": k_opt,
+        "segment_profiles": profile.round(4).to_dict(),
+        "classifier_accuracy": clf_results["accuracy"],
+        "feature_importances": clf_results["feature_importances"],
+        "confusion_matrix": clf_results["confusion_matrix"],
+        "segments": SEGMENT_NAMES,
     }
 
-    with open("reports/segmentation_results.json", "w") as f:
-        json.dump(results, f, indent=2)
+    import os
+    os.makedirs("/home/workspace/Projects/customer-segmentation-underwriting/reports", exist_ok=True)
+    out_path = "/home/workspace/Projects/customer-segmentation-underwriting/reports/segmentation_results.json"
+    with open(out_path, "w") as f:
+        json.dump(results, f, indent=2, default=str)
+    print(f"  Saved → {out_path}")
 
     print("\n" + "=" * 60)
     print("PIPELINE COMPLETE")
     print("=" * 60)
-    print(f"Results saved to: reports/segmentation_results.json")
-    print(f"\nSummary:")
-    print(f"  - Customers: {len(df)}")
-    print(f"  - Features: {len(feature_cols)}")
-    print(f"  - Silhouette Score: {k_results['best_silhouette']:.4f}")
-    print(f"  - Classifier Accuracy: {clf_result['accuracy']:.4f}")
 
-    # Build summary string for Telegram
-    summary = (
-        f"Pipeline complete:\n"
-        f"• 5000 customers segmented into 4 groups\n"
-        f"• KMeans silhouette: {k_results['best_silhouette']:.4f}\n"
-        f"• RF classifier accuracy: {clf_result['accuracy']:.4f}\n"
-        f"• Segments: Mass Market, Rising Prime, Established Prime, Subprime High-Risk"
-    )
-    return summary
+    return results
 
 
 if __name__ == "__main__":
-    summary = main()
+    results = main()

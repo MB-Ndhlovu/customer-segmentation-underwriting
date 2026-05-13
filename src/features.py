@@ -1,51 +1,47 @@
+"""Feature engineering for customer segmentation."""
+
 import pandas as pd
 import numpy as np
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Build engineered features for segmentation:
-    - RFM features: Recency, Frequency, Monetary proxies
-    - Behavioral features: debt burden, credit utilization proxy
-    - Stability features: employment tenure, income stability proxy
-    """
-    X = df.copy()
+    """Add engineered features to the customer dataframe."""
+    df = df.copy()
 
-    # RFM features (loan_application_recency as proxy for recency)
-    # Frequency: loan_history_count already represents historical frequency
-    # Monetary: income as monetary value
+    # Home ownership → ordinal
+    home_map = {"rent": 0, "mortgage": 1, "own": 2}
+    df["home_ownership_enc"] = df["home_ownership"].map(home_map)
 
-    # Behavioral: debt burden score
-    X["debt_burden_score"] = X["debt_to_income"] * X["loan_history_count"]
-
-    # Behavioral: credit risk score (lower credit_score = higher risk)
-    X["credit_risk_score"] = (850 - X["credit_score"]) / 550  # normalized 0-1
-
-    # Stability: employment stability (longer tenure = more stable)
-    X["employment_stability"] = np.where(
-        X["employment_years"] < 2, 0,
-        np.where(X["employment_years"] < 5, 1,
-                 np.where(X["employment_years"] < 10, 2, 3))
+    # RFM-adjacent: income stability proxy via verified_income + employment tenure
+    df["income_stability_score"] = (
+        df["verified_income"].astype(float) * 0.4
+        + (df["employment_years"] / 20.0).clip(0, 1) * 0.6
     )
 
-    # Stability: income stability (verified income = stable)
-    X["income_stability"] = X["verified_income"] * 0.7 + X["home_ownership"] * 0.3
+    # Behavioral: loan density (loan_history per year of employment)
+    df["loan_density"] = df["loan_history_count"] / (df["employment_years"] + 1)
 
-    # Combined risk indicators
-    X["combined_risk"] = (
-        X["credit_risk_score"] * 0.4 +
-        X["debt_to_income"] * 0.3 +
-        (1 - X["employment_stability"] / 3) * 0.3
-    )
+    # Stability: debt burden flag
+    df["high_dti_flag"] = (df["debt_to_income"] > 0.38).astype(int)
 
-    # Affordability ratio
-    X["affordability_ratio"] = X["income"] / (X["debt_to_income"] * X["income"] + 1)
+    # Credit strength bucket
+    df["credit_bucket"] = pd.cut(
+        df["credit_score"],
+        bins=[0, 580, 670, 740, 850],
+        labels=[0, 1, 2, 3],
+    ).astype(int)
 
-    return X
+    # Employment stability ratio
+    df["employment_stability"] = (df["employment_years"] / (df["age"] - 18)).clip(0, 1)
+
+    # Income per age year (proxy for career trajectory)
+    df["income_per_age"] = df["income"] / df["age"]
+
+    return df
 
 
-def get_feature_columns() -> list:
-    """Return the list of features used for clustering."""
+def get_feature_columns() -> list[str]:
+    """Columns used for clustering / classification."""
     return [
         "income",
         "credit_score",
@@ -53,15 +49,6 @@ def get_feature_columns() -> list:
         "debt_to_income",
         "loan_history_count",
         "age",
-        "home_ownership",
+        "home_ownership_enc",
         "verified_income",
     ]
-
-
-if __name__ == "__main__":
-    from data_loader import generate_customer_data
-
-    df = generate_customer_data()
-    X = build_features(df)
-    print("Engineered features shape:", X.shape)
-    print(X.describe())
